@@ -1,0 +1,23 @@
+# Zephyr / west build artifacts
+build/
+build-*/
+.west/
+
+# West workspace siblings (created by `west update`)
+/deps/
+/modules/
+/nrf/
+/nrfxlib/
+/zephyr/
+/bootloader/
+/tools/
+
+# Editor noise
+.DS_Store
+*.swp
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.pyc
