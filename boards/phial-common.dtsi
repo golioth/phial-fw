@@ -1,0 +1,56 @@
+/*
+ * Phial board hardware description — shared across every app in this repo.
+ * Pulled in by each app's `boards/<board_target>.overlay` via #include.
+ *
+ * Source of truth for pin assignments: docs/superpowers/specs/2026-05-14-phial-bringup-design.md
+ *
+ * NOTE: LEDs 13–16 are on the TRACEDATA / SWO pins (P2.07–P2.10). They work
+ * fine as plain GPIOs, but enabling SWO-based debug output will collide with
+ * LED16 (P2.07). Standard SWD debug on the dedicated SWDIO/SWCLK pins is
+ * unaffected.
+ */
+
+/ {
+    leds: leds {
+        compatible = "gpio-leds";
+
+        /* Ring LEDs 1–12 — clock-face layout */
+        led01: led_01 { gpios = <&gpio1 10 GPIO_ACTIVE_HIGH>; label = "LED01 (ring 1)";  };
+        led02: led_02 { gpios = <&gpio1  9 GPIO_ACTIVE_HIGH>; label = "LED02 (ring 2)";  };
+        led03: led_03 { gpios = <&gpio0  3 GPIO_ACTIVE_HIGH>; label = "LED03 (ring 3)";  };
+        led04: led_04 { gpios = <&gpio0  2 GPIO_ACTIVE_HIGH>; label = "LED04 (ring 4)";  };
+        led05: led_05 { gpios = <&gpio2  6 GPIO_ACTIVE_HIGH>; label = "LED05 (ring 5)";  };
+        led06: led_06 { gpios = <&gpio2  5 GPIO_ACTIVE_HIGH>; label = "LED06 (ring 6)";  };
+        led07: led_07 { gpios = <&gpio2  4 GPIO_ACTIVE_HIGH>; label = "LED07 (ring 7)";  };
+        led08: led_08 { gpios = <&gpio2  3 GPIO_ACTIVE_HIGH>; label = "LED08 (ring 8)";  };
+        led09: led_09 { gpios = <&gpio2  2 GPIO_ACTIVE_HIGH>; label = "LED09 (ring 9)";  };
+        led10: led_10 { gpios = <&gpio2  1 GPIO_ACTIVE_HIGH>; label = "LED10 (ring 10)"; };
+        led11: led_11 { gpios = <&gpio2  0 GPIO_ACTIVE_HIGH>; label = "LED11 (ring 11)"; };
+        led12: led_12 { gpios = <&gpio1 14 GPIO_ACTIVE_HIGH>; label = "LED12 (ring 12)"; };
+
+        /* Center LEDs 13–16 — on TRACEDATA / SWO pins */
+        led13: led_13 { gpios = <&gpio2  8 GPIO_ACTIVE_HIGH>; label = "LED13 (center)"; };  /* TRACEDATA1 */
+        led14: led_14 { gpios = <&gpio2  9 GPIO_ACTIVE_HIGH>; label = "LED14 (center)"; };  /* TRACEDATA2 */
+        led15: led_15 { gpios = <&gpio2 10 GPIO_ACTIVE_HIGH>; label = "LED15 (center)"; };  /* TRACEDATA3 */
+        led16: led_16 { gpios = <&gpio2  7 GPIO_ACTIVE_HIGH>; label = "LED16 (center, SWO)"; };  /* SWO */
+    };
+
+    aliases {
+        led0  = &led01;
+        led1  = &led02;
+        led2  = &led03;
+        led3  = &led04;
+        led4  = &led05;
+        led5  = &led06;
+        led6  = &led07;
+        led7  = &led08;
+        led8  = &led09;
+        led9  = &led10;
+        led10 = &led11;
+        led11 = &led12;
+        led12 = &led13;
+        led13 = &led14;
+        led14 = &led15;
+        led15 = &led16;
+    };
+};
