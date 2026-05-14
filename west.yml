@@ -1,0 +1,36 @@
+# Copyright (c) 2022-2026 Golioth, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+manifest:
+  version: 1.0
+
+  projects:
+    - name: golioth
+      path: modules/lib/golioth-firmware-sdk
+      revision: v0.21.0
+      url: https://github.com/golioth/golioth-firmware-sdk.git
+      west-commands: scripts/west-commands.yml
+      submodules: true
+      import:
+        file: west-ncs.yml
+        path-prefix: deps
+        name-allowlist:
+          - nrf
+          - zephyr
+          - cmsis_6
+          - hal_nordic
+          - mbedtls
+          - mbedtls-nrf
+          - mcuboot
+          - net-tools
+          - nrfxlib
+          - oberon-psa-crypto
+          - qcbor
+          - segger
+          - tfm-mcuboot
+          - tinycrypt
+          - trusted-firmware-m
+          - zcbor
+
+  self:
+    path: phial-fw
