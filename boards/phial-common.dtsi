@@ -8,7 +8,86 @@
  * fine as plain GPIOs, but enabling SWO-based debug output will collide with
  * LED16 (P2.07). Standard SWD debug on the dedicated SWDIO/SWCLK pins is
  * unaffected.
+ *
+ * We build against the `nrf54l15dk/nrf54l15/cpuapp` target, which enables a
+ * bunch of DK-specific peripherals that claim GPIO pins overlapping with the
+ * Phial LEDs. The block below disables them and deletes the DK's onboard
+ * LED / button nodes. Without this, ~10 of the 16 LEDs are silently grabbed
+ * by spi00 / pwm20 / uart30 / DK gpio-leds / DK gpio-keys and won't toggle.
  */
+
+/* ---------------------------------------------------------------------------
+ * Disable DK peripherals whose default pinctrl claims Phial LED pins
+ * ------------------------------------------------------------------------- */
+
+&spi00 {
+    /* DK QSPI flash on P2.01 (SCK) / P2.02 (MOSI) / P2.04 (MISO) / P2.05 (CS)
+     * — those are our LED10 / LED09 / LED07 / LED06. Phial has no QSPI flash. */
+    status = "disabled";
+};
+
+&mx25r64 {
+    /* Flash chip child of the now-disabled spi00 — disable for clarity. */
+    status = "disabled";
+};
+
+&pwm20 {
+    /* DK's pwm20 default routes PWM_OUT0 to P1.10 = our LED01. We will
+     * re-enable pwm20 in Phase 2 with our own pinctrl group for pwm-leds. */
+    status = "disabled";
+};
+
+&uart30 {
+    /* DK's uart30 default routes RTS to P0.02 = our LED04. uart30 isn't
+     * used on Phial. */
+    status = "disabled";
+};
+
+/* uart20 (the DK's J-Link VCOM UART) is left status="okay" so the
+ * shell-serial backend has a binding. Its default pinctrl puts TX/RX/RTS/CTS
+ * on P1.04–P1.07, none of which are Phial LED pins, so no conflict. The
+ * UART output simply goes to dead pads on Phial until we re-route pinctrl
+ * to Phial's actual debug-header UART pins. Diagnostic console for bringup
+ * is via Segger RTT (enabled in app/led-test/prj.conf). */
+
+/* ---------------------------------------------------------------------------
+ * Delete the DK's onboard LED and button nodes
+ *
+ * The DK's `/leds/led_0..led_3` claim P2.09 / P1.10 / P2.07 / P1.14
+ * = our LED14 / LED01 / LED16 / LED12. The DK's `/buttons/button_0..3`
+ * claim P1.13 / P1.09 / P1.08 / P0.04 — button1 grabs P1.09 = our LED02
+ * as an input with pull-up.
+ *
+ * We use label-based deletion (the DK labels these nodes).
+ * ------------------------------------------------------------------------- */
+
+/delete-node/ &led0;
+/delete-node/ &led1;
+/delete-node/ &led2;
+/delete-node/ &led3;
+
+/ {
+    /delete-node/ buttons;
+
+    /* DK aliases pointed at the deleted nodes — drop the dangling references.
+     * Our own `led0..led15` aliases get re-added in the LED block below. */
+    aliases {
+        /delete-property/ led0;
+        /delete-property/ led1;
+        /delete-property/ led2;
+        /delete-property/ led3;
+        /delete-property/ sw0;
+        /delete-property/ sw1;
+        /delete-property/ sw2;
+        /delete-property/ sw3;
+        /delete-property/ mcuboot-led0;
+        /delete-property/ mcuboot-button0;
+    };
+};
+
+/* ---------------------------------------------------------------------------
+ * Phial LEDs — 16 GPIO-driven LEDs (12 ring + 4 center)
+ * ------------------------------------------------------------------------- */
 
 / {
     leds: leds {
