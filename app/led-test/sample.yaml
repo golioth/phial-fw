@@ -1,0 +1,17 @@
+sample:
+  name: Phial LED test
+  description: Drive 16 GPIO LEDs with patterns; exercise Zephyr shell.
+
+common:
+  build_only: true
+  tags:
+    - phial
+    - led
+    - shell
+
+tests:
+  sample.phial.led_test:
+    platform_allow:
+      - nrf54l15dk/nrf54l15/cpuapp
+    integration_platforms:
+      - nrf54l15dk/nrf54l15/cpuapp

@@ -1,0 +1,6 @@
+/*
+ * Per-app overlay wrapper: pull in the shared Phial hardware description.
+ * Add app-specific tweaks below the include if ever needed; otherwise leave alone.
+ */
+
+#include "../../../boards/phial-common.dtsi"
