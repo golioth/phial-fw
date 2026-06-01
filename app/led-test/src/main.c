@@ -7,8 +7,29 @@
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
-#define BLINK_LED_IDX  0   /* led0 alias → LED01 on P1.10 */
-#define BLINK_PERIOD_MS  500
+#define NUM_LEDS  16
+#define DWELL_MS  50
+
+/* Index → expected Phial label + nRF pin, for cross-checking against the PCB.
+ * Order must match the children of `leds {}` in boards/phial-common.dtsi. */
+static const char *const led_names[NUM_LEDS] = {
+    "LED01 P1.10",
+    "LED02 P1.09",
+    "LED03 P0.03",
+    "LED04 P0.02",
+    "LED05 P2.06",
+    "LED06 P2.05",
+    "LED07 P2.04",
+    "LED08 P2.03",
+    "LED09 P2.02",
+    "LED10 P2.01",
+    "LED11 P2.00",
+    "LED12 P1.14",
+    "LED13 P2.08",
+    "LED14 P2.09",
+    "LED15 P2.10",
+    "LED16 P2.07",
+};
 
 int main(void)
 {
@@ -19,18 +40,19 @@ int main(void)
         return -ENODEV;
     }
 
-    LOG_INF("Phial first-light: blinking LED %d every %d ms",
-            BLINK_LED_IDX, BLINK_PERIOD_MS);
+    LOG_INF("Phial LED walk: %d LEDs, %d ms each", NUM_LEDS, DWELL_MS);
 
-    bool on = false;
+    for (int i = 0; i < NUM_LEDS; i++) {
+        led_off(leds, i);
+    }
+
     while (1) {
-        on = !on;
-        if (on) {
-            led_on(leds, BLINK_LED_IDX);
-        } else {
-            led_off(leds, BLINK_LED_IDX);
+        for (int i = 0; i < NUM_LEDS; i++) {
+            LOG_INF("idx=%d -> %s ON", i, led_names[i]);
+            led_on(leds, i);
+            k_msleep(DWELL_MS);
+            led_off(leds, i);
         }
-        k_msleep(BLINK_PERIOD_MS);
     }
 
     return 0;
