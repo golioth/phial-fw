@@ -1,0 +1,6 @@
+/*
+ * Per-app overlay wrapper: pull in the shared Phial hardware description
+ * (LED map, i2c30, lis2dh12). Add app-specific tweaks below the include.
+ */
+
+#include "../../../boards/phial-common.dtsi"

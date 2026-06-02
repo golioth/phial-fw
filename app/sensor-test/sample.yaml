@@ -1,0 +1,17 @@
+sample:
+  name: Phial sensor test
+  description: LIS2DH12 tilt drives the 16 LEDs; exercises Zephyr sensor + shell.
+
+common:
+  build_only: true
+  tags:
+    - phial
+    - sensor
+    - accel
+
+tests:
+  sample.phial.sensor_test:
+    platform_allow:
+      - nrf54l15dk/nrf54l15/cpuapp
+    integration_platforms:
+      - nrf54l15dk/nrf54l15/cpuapp
