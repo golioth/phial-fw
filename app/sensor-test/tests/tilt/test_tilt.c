@@ -13,6 +13,11 @@
 #include <math.h>
 #include "tilt.h"
 
+/* M_PI is POSIX, not ISO C — define it for strict -std=c11 on Linux CI. */
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 #define G 9.80665f
 
 static int g_checks;

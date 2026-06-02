@@ -2,6 +2,11 @@
 #include "tilt.h"
 #include <math.h>
 
+/* M_PI is POSIX, not ISO C — Zephyr's strict-C11 libc may not define it. */
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 #define RAD_TO_DEG (180.0f / (float)M_PI)
 
 /* Apply axis swap/invert, return in *ox,*oy. */
