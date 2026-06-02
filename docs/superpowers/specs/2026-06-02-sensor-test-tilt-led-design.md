@@ -122,12 +122,18 @@ peripheral, per repo convention). It is inert for apps that do not enable
 ```dts
 &i2c30 {
     accel: lis2dh12@18 {
-        compatible = "st,lis2dh12";
+        compatible = "st,lis2dh12", "st,lis2dh";
         reg = <0x18>;
         status = "okay";
     };
 };
 ```
+
+The compatible **must** be the two-element list. The driver's `DT_DRV_COMPAT`
+is `st_lis2dh` and `CONFIG_LIS2DH` depends on `DT_HAS_ST_LIS2DH_ENABLED`; a node
+with only `st,lis2dh12` sets neither, so `CONFIG_LIS2DH=y` binds nothing and
+`DEVICE_DT_GET(accel)` yields no driver. Every in-tree board (thingy52, actinius
+icarus, ruuvitag, …) declares this part as `"st,lis2dh12", "st,lis2dh"`.
 
 No `irq-gpios`: the app polls, so the INT line need not be routed (and we have
 not confirmed it is).
