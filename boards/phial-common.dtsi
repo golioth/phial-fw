@@ -125,6 +125,19 @@
     pinctrl-names = "default", "sleep";
 };
 
+/* LIS2DH12 3-axis accelerometer (U10) on the Phial sensor bus.
+ * Dual compatible is REQUIRED: the Zephyr driver matches DT_DRV_COMPAT
+ * `st_lis2dh` and CONFIG_LIS2DH depends on DT_HAS_ST_LIS2DH_ENABLED; a node
+ * with only `st,lis2dh12` binds no driver. Inert for apps without
+ * CONFIG_LIS2DH (e.g. led-test), so this stays in the shared overlay. */
+&i2c30 {
+    accel: lis2dh12@18 {
+        compatible = "st,lis2dh12", "st,lis2dh";
+        reg = <0x18>;
+        status = "okay";
+    };
+};
+
 /* ---------------------------------------------------------------------------
  * Delete the DK's onboard LED and button nodes
  *
