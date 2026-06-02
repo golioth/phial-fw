@@ -335,6 +335,7 @@ tests:
 ```c
 /* SPDX-License-Identifier: Apache-2.0 */
 #include <zephyr/ztest.h>
+#include <math.h>          /* M_PI, cosf, sinf — used by the seam test in Task 4 */
 #include "tilt.h"
 
 #define G 9.80665f
@@ -500,23 +501,34 @@ ZTEST(tilt, test_deadzone_hysteresis)
     zassert_equal(TILT_LEVEL, tilt_update(&st, -1.0f, 0.0f));
 }
 
-/* --- seam hysteresis: small dither near a seam holds the current sector --- */
+/* --- seam hysteresis: dither just past a seam holds; well past releases --- */
+/* Helper: build (ax,ay) whose downhill bearing is `compass` degrees, |g|=G.
+ * downhill vector (-ax,-ay) = (cos,sin) of the math angle (90 - compass). */
+static void accel_for_compass(float compass_deg, float *ax, float *ay)
+{
+    float mr = (90.0f - compass_deg) * (float)M_PI / 180.0f;
+    *ax = -cosf(mr) * G;
+    *ay = -sinf(mr) * G;
+}
+
 ZTEST(tilt, test_seam_hysteresis)
 {
     struct tilt_state st = { .cal = TILT_CAL_DEFAULT, .last = TILT_LEVEL };
+    float ax, ay;
 
     /* Land squarely in East (sector 3, compass 90). */
     zassert_equal(3, tilt_update(&st, -G, 0.0f));
 
-    /* Nudge just past the 3|4 seam (compass ~105 is the boundary) by a hair
-     * less than the seam margin -> still East. Build a vector at compass ~104. */
-    float c = 104.0f * (float)M_PI / 180.0f;      /* compass radians */
-    /* downhill vector at compass c: math angle = 90-c; (-ax,-ay)=(cos,sin)*g */
-    float mdeg = 90.0f - 104.0f;
-    float mr = mdeg * (float)M_PI / 180.0f;
-    float dx = cosf(mr) * G, dy = sinf(mr) * G;
-    (void)c;
-    zassert_equal(3, tilt_update(&st, -dx, -dy), "within seam margin holds East");
+    /* Compass 108: raw sector is 4 (round(108/30)=4), but it is within the
+     * 15 + seam_margin(6) = 21deg hold band of sector 3's center (90), so the
+     * lit sector MUST stay 3. This genuinely exercises the hold branch. */
+    accel_for_compass(108.0f, &ax, &ay);
+    zassert_equal(3, tilt_update(&st, ax, ay), "within seam band holds East");
+
+    /* Compass 120 (sector 4 center, 30deg from sector 3 — past the band):
+     * the lit sector now releases to 4. */
+    accel_for_compass(120.0f, &ax, &ay);
+    zassert_equal(4, tilt_update(&st, ax, ay), "past seam band releases to sector 4");
 }
 ```
 
