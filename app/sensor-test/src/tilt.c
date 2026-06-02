@@ -42,9 +42,38 @@ int tilt_sector(float ax, float ay, const struct tilt_cal *cal)
     return ((sector % 12) + 12) % 12;
 }
 
-/* Defined in Task 4. */
 int tilt_update(struct tilt_state *st, float ax, float ay)
 {
-    (void)st; (void)ax; (void)ay;
-    return TILT_LEVEL;
+    float mag = hypotf(ax, ay);
+    const struct tilt_cal *cal = &st->cal;
+
+    /* Deadzone with enter/exit hysteresis. */
+    if (st->last == TILT_LEVEL) {
+        if (mag < cal->enter_ms2) {
+            return st->last;           /* stay level */
+        }
+    } else {
+        if (mag < cal->exit_ms2) {
+            st->last = TILT_LEVEL;     /* fall back to level */
+            return st->last;
+        }
+    }
+
+    float compass = downhill_compass_deg(cal, ax, ay);
+    int sector = (((int)lroundf(compass / 30.0f)) % 12 + 12) % 12;
+
+    /* Seam hysteresis: when already showing a ring LED, keep the current sector
+     * until the angle moves more than (15 + seam_margin) deg from that sector's
+     * center, so dithering at a seam doesn't blink between two LEDs. */
+    if (st->last != TILT_LEVEL && sector != st->last) {
+        float last_center = st->last * 30.0f;
+        float d = fmodf(fabsf(compass - last_center), 360.0f);
+        if (d > 180.0f) d = 360.0f - d;
+        if (d <= (15.0f + cal->seam_margin_deg)) {
+            sector = st->last;         /* within the sticky band, hold */
+        }
+    }
+
+    st->last = sector;
+    return sector;
 }
