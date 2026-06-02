@@ -21,8 +21,20 @@ encodes tilt direction; its magnitude encodes how far from level.
 
 | Board state | LEDs |
 |-------------|------|
-| Flat / level (in-plane gravity below threshold) | 4 center LEDs (13–16) on, ring off |
+| Flat / level (in-plane gravity below threshold) | 4 center LEDs (labels LED13–16 = **indices 12–15**) on, ring off |
 | Tilted past threshold | Exactly one ring LED, on the **downhill** side; center off |
+
+### LED indexing convention (read first — prevents off-by-one)
+
+Physical silkscreen **labels are 1-based** (LED01…LED16). The Zephyr `led` /
+`gpio-leds` API is **0-based**: driver index = label − 1. So LED01 = index 0,
+LED12 = index 11, LED13 = index 12, … LED16 = index 15 — matching the
+`led_on(leds, i)` calls already in `app/led-test/main.c`.
+
+**All code (the `sector_to_led` table, the center-cluster writes) uses 0-based
+indices.** This document mentions 1-based labels only in prose for human
+readability; every array/loop value is 0-based. Example: "center cluster
+LED13–16" → `led_on(leds, 12..15)`.
 
 - Ring resolution: 12 sectors of 30° (one LED each). Single LED only — no
   blending (LEDs are plain GPIO on/off; brightness/PWM is a later phase).
@@ -80,10 +92,14 @@ chip-to-ring rotation is dialed in on the bench (see Calibration).
   4. **Render only on change** (avoid redundant GPIO writes / flicker):
      - `TILT_LEVEL` → ring off, center LEDs 13–16 on.
      - sector `n` → all off, light `sector_to_led[n]`.
-- `sector_to_led[12]` is an explicit compass-bucket → physical-LED-index table
-  derived from the led-test layout (N→LED12, E→LED03, S→LED06, W→LED09, etc.).
-  Keeping it explicit makes the physical mapping reviewable and adjustable
-  independent of the angle math.
+- `sector_to_led[12]` maps compass bucket (0 = North, clockwise) → **0-based
+  driver index**. From the led-test layout: sector 0 (N) → LED12 = index **11**;
+  sector 3 (E) → LED03 = index **2**; sector 6 (S) → LED06 = index **5**;
+  sector 9 (W) → LED09 = index **8**; the eight in-between buckets fill the
+  remaining ring positions. Keeping it an explicit 12-entry table makes the
+  physical mapping reviewable and adjustable independent of the angle math.
+  (This is a *separate* table from led-test's `inner_for_outer`, which maps the
+  other direction — outer ring → center cluster — and is not reused here.)
 
 ### Tuning shell command — `tilt`
 
@@ -92,6 +108,10 @@ chip-to-ring rotation is dialed in on the bench (see Calibration).
 - `tilt offset <deg>` — set a **volatile** offset live (overrides the build-time
   default until reboot) so the chip-vs-ring rotation can be tuned without
   reflashing. The final value is then baked into `tilt.h`.
+
+Registered app-side via `SHELL_STATIC_SUBCMD_SET_CREATE` + `SHELL_CMD_REGISTER`
+in `main.c` (distinct from the built-in `sensor` command that
+`CONFIG_SENSOR_SHELL` provides).
 
 ## Devicetree change
 
@@ -132,13 +152,15 @@ CONFIG_LIS2DH=y
 CONFIG_CBPRINTF_FP_SUPPORT=y    # %f in shell output
 CONFIG_FPU=y                    # M33 hardware float for atan2f
 CONFIG_MAIN_STACK_SIZE=2048
-
-# RTT fallback console (mirrors led-test; safety net during bring-up)
-CONFIG_USE_SEGGER_RTT=y
-CONFIG_RTT_CONSOLE=y
-CONFIG_SHELL_BACKEND_RTT=y
-CONFIG_UART_CONSOLE=y
 ```
+
+For the RTT-fallback console block, **copy `app/led-test/prj.conf`'s console
+section verbatim, including its comments** — it carries a hard-won warning not
+to also enable `CONFIG_LOG_BACKEND_RTT` (it would fight the shell over RTT
+channel 0). The relevant symbols are `CONFIG_USE_SEGGER_RTT=y`,
+`CONFIG_RTT_CONSOLE=y`, `CONFIG_SHELL_BACKEND_RTT=y`, `CONFIG_UART_CONSOLE=y`
+(RTT owns the console; UART shell rides its own backend from
+`shell-common.conf`). Do not re-derive this block from scratch.
 
 - **sample.yaml** — `build_only`, `platform_allow: nrf54l15dk/nrf54l15/cpuapp`,
   tags `phial`, `sensor`, `accel`.
@@ -153,7 +175,9 @@ CONFIG_UART_CONSOLE=y
   expected rotated/mirrored sector.
 
 **Hardware bring-up:**
-1. `sensor get lis2dh12` returns sane X/Y/Z (≈ +9.8 on whichever axis is up).
+1. `sensor get <name>` returns sane X/Y/Z (≈ +9.8 on whichever axis is up).
+   The `<name>` is the devicetree node name as shown by `device list` — i.e.
+   `lis2dh12@18`, not the `accel` label. Confirm the exact string on hardware.
 2. Tilt N/E/S/W → expect LED12 / LED03 / LED06 / LED09 (after calibration).
 3. Flat → center cluster (13–16) on.
 4. Use `tilt status` / `tilt offset` to find the offset; bake into `tilt.h`.
