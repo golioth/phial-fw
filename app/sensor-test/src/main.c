@@ -5,6 +5,8 @@
 #include <zephyr/drivers/led.h>
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/shell/shell.h>
+#include <stdlib.h>
 
 #include "tilt.h"
 
@@ -82,3 +84,42 @@ int main(void)
     }
     return 0;
 }
+
+static int cmd_tilt_status(const struct shell *sh, size_t argc, char **argv)
+{
+    ARG_UNUSED(argc); ARG_UNUSED(argv);
+    int target = g_target;
+    shell_print(sh, "accel (filt): x=%.3f y=%.3f z=%.3f m/s^2",
+                (double)g_ax, (double)g_ay, (double)g_az);
+    shell_print(sh, "offset=%.1f deg  enter=%.2f exit=%.2f",
+                (double)g_state.cal.offset_deg,
+                (double)g_state.cal.enter_ms2, (double)g_state.cal.exit_ms2);
+    if (target == TILT_LEVEL) {
+        shell_print(sh, "target: LEVEL (center cluster)");
+    } else {
+        shell_print(sh, "target: sector %d -> LED index %d (LED%02d)",
+                    target, sector_to_led[target], sector_to_led[target] + 1);
+    }
+    return 0;
+}
+
+static int cmd_tilt_offset(const struct shell *sh, size_t argc, char **argv)
+{
+    if (argc != 2) {
+        shell_error(sh, "usage: tilt offset <deg>");
+        return -EINVAL;
+    }
+    g_state.cal.offset_deg = strtof(argv[1], NULL);
+    shell_print(sh, "offset set to %.1f deg (volatile)",
+                (double)g_state.cal.offset_deg);
+    return 0;
+}
+
+SHELL_STATIC_SUBCMD_SET_CREATE(tilt_sub,
+    SHELL_CMD(status, NULL, "Show filtered accel, angle offset, and target LED.",
+              cmd_tilt_status),
+    SHELL_CMD_ARG(offset, NULL, "Set volatile angle offset in degrees.",
+                  cmd_tilt_offset, 2, 0),
+    SHELL_SUBCMD_SET_END);
+
+SHELL_CMD_REGISTER(tilt, &tilt_sub, "Phial tilt-to-LED tuning", NULL);
