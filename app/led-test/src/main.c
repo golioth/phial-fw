@@ -76,7 +76,7 @@ int main(void)
             int cur_inner  = inner_for_outer[i];
             int next_inner = inner_for_outer[next_outer];
 
-            LOG_INF("idx=%d -> %s ON", i, led_names[i]);
+            //LOG_INF("idx=%d -> %s ON", i, led_names[i]);
             led_on(leds, i);
             led_on(leds, cur_inner);
             k_msleep(DWELL_MS - CROSSOVER_MS);
