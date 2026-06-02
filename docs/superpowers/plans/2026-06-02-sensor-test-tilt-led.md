@@ -15,7 +15,7 @@
 ## Conventions for all tasks
 
 - **Run commands from the workspace root** `/Users/chrisg/golioth/phial-fw` unless stated otherwise. West lives in the repo venv: use `.venv/bin/west`.
-- **Board build:** `-b nrf54l15dk/nrf54l15/cpuapp`, build dir `build/sensor-test`.
+- **Board build:** `-b nrf54l15dk/nrf54l15/cpuapp`, build dir `build/sensor-test`. **Always pass `--no-sysbuild`** — these apps are secure-only with no MCUboot, and Zephyr's default sysbuild wrapper fails to configure them. (All `west build` commands below assume this flag even where omitted for brevity.)
 - **LED indexing is 0-based** (driver index = silkscreen label − 1). LED01=0 … LED16=15.
 - **Commit** at the end of each task with the exact message given. Commit straight to `master` (matches this repo's workflow).
 
