@@ -7,8 +7,10 @@
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
-#define NUM_LEDS  16
-#define DWELL_MS  50
+#define NUM_LEDS      16
+#define OUTER_LEDS    12
+#define DWELL_MS      30
+#define CROSSOVER_MS  20
 
 /* Index → expected Phial label + nRF pin, for cross-checking against the PCB.
  * Order must match the children of `leds {}` in boards/phial-common.dtsi. */
@@ -31,6 +33,27 @@ static const char *const led_names[NUM_LEDS] = {
     "LED16 P2.07",
 };
 
+/* Maps each outer LED (0-11, clock-face) to the inner cardinal LED (12-15)
+ * that sits closest to that quadrant:
+ *   north (12): LEDs 11, 12, 1  → indices 10, 11, 0
+ *   east  (13): LEDs  2,  3, 4  → indices  1,  2, 3
+ *   south (14): LEDs  5,  6, 7  → indices  4,  5, 6
+ *   west  (15): LEDs  8,  9, 10 → indices  7,  8, 9 */
+static const uint8_t inner_for_outer[OUTER_LEDS] = {
+    12, /* idx  0 = LED01 → LED13 north */
+    13, /* idx  1 = LED02 → LED14 east  */
+    13, /* idx  2 = LED03 → LED14 east  */
+    13, /* idx  3 = LED04 → LED14 east  */
+    14, /* idx  4 = LED05 → LED15 south */
+    14, /* idx  5 = LED06 → LED15 south */
+    14, /* idx  6 = LED07 → LED15 south */
+    15, /* idx  7 = LED08 → LED16 west  */
+    15, /* idx  8 = LED09 → LED16 west  */
+    15, /* idx  9 = LED10 → LED16 west  */
+    12, /* idx 10 = LED11 → LED13 north */
+    12, /* idx 11 = LED12 → LED13 north */
+};
+
 int main(void)
 {
     const struct device *leds = DEVICE_DT_GET_ANY(gpio_leds);
@@ -40,18 +63,35 @@ int main(void)
         return -ENODEV;
     }
 
-    LOG_INF("Phial LED walk: %d LEDs, %d ms each", NUM_LEDS, DWELL_MS);
+    LOG_INF("Phial LED walk: %d outer + 4 inner, %d ms dwell, %d ms crossover",
+            OUTER_LEDS, DWELL_MS, CROSSOVER_MS);
 
     for (int i = 0; i < NUM_LEDS; i++) {
         led_off(leds, i);
     }
 
     while (1) {
-        for (int i = 0; i < NUM_LEDS; i++) {
+        for (int i = 0; i < OUTER_LEDS; i++) {
+            int next_outer = (i + 1) % OUTER_LEDS;
+            int cur_inner  = inner_for_outer[i];
+            int next_inner = inner_for_outer[next_outer];
+
             LOG_INF("idx=%d -> %s ON", i, led_names[i]);
             led_on(leds, i);
-            k_msleep(DWELL_MS);
+            led_on(leds, cur_inner);
+            k_msleep(DWELL_MS - CROSSOVER_MS);
+
+            /* crossover: light next outer; if quadrant boundary, next inner too */
+            led_on(leds, next_outer);
+            if (next_inner != cur_inner) {
+                led_on(leds, next_inner);
+            }
+            k_msleep(CROSSOVER_MS);
+
             led_off(leds, i);
+            if (next_inner != cur_inner) {
+                led_off(leds, cur_inner);
+            }
         }
     }
 
