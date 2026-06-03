@@ -99,8 +99,13 @@ on I²C.
 
 ### Sampling thread
 
-`K_THREAD_DEFINE` with a ~1 KB stack (sensor fetch + log formatting; `main`'s
-stack is 2048, this does less). Loop:
+~1 KB stack (sensor fetch + log formatting; `main`'s stack is 2048, this does
+less). **The thread is started by `env_init()` only after the device-ready
+check passes** — defined with `K_THREAD_DEFINE(..., K_FOREVER)` (or created in
+`env_init`) and started via `k_thread_start`. If the BME280 is not ready,
+`env_init()` returns `-ENODEV` and the thread is never started, so a missing
+sensor produces exactly one warning (from `env_init`/`main`), not a `LOG_WRN`
+every 10 s forever. Loop:
 
 ```
 loop:
@@ -112,6 +117,10 @@ loop:
         LOG_WRN("BME280 fetch failed") and keep the previous cache
   k_msleep(10000)
 ```
+
+Runtime fetch failures (sensor present but a transaction fails) still warn each
+cycle — that is intentional and bounded by the 10 s cadence, and signals a real
+bus problem worth seeing.
 
 The 10 s interval is a compile-time constant (`ENV_SAMPLE_MS`). Not runtime
 tunable — there is nothing to tune for a demo telemetry cadence, and a future
@@ -132,13 +141,22 @@ Add to the shared `boards/phial-common.dtsi`, right after the `lis2dh12` node:
 ```
 
 Placed in the **shared** dtsi (not the app overlay) to match the LIS2DH12
-precedent: an unbound sensor node is inert for apps that don't enable its
-driver, so `led-test` is unaffected and the node is available to future apps.
-`env.c` resolves it with `DEVICE_DT_GET(DT_NODELABEL(bme280))`.
+precedent and keep the node available to future apps. `env.c` resolves it with
+`DEVICE_DT_GET(DT_NODELABEL(bme280))`.
 
 The Zephyr BME280 driver matches `compatible = "bosch,bme280"` and
 `CONFIG_BME280` depends on `DT_HAS_BOSCH_BME280_ENABLED` — a single compatible,
 with none of the dual-compatible quirk the LIS2DH12 node needs.
+
+**One difference from the LIS2DH12 precedent, called out so it is not a
+surprise:** `CONFIG_BME280` is `default y` when its DT node is present, whereas
+`CONFIG_LIS2DH` is not. So with the node in the *shared* dtsi, the BME280 driver
+will build into **every app that includes `phial-common.dtsi`** (e.g.
+`led-test`), not just `sensor-test` — it is not truly "inert" elsewhere the way
+the unread LIS2DH node is. This is harmless: a few KB of flash and an
+initialized device that nobody reads. If footprint ever matters for another app,
+set `CONFIG_BME280=n` in that app's `prj.conf`. The node stays in the shared
+dtsi.
 
 ### Kconfig and build
 
@@ -150,7 +168,7 @@ with none of the dual-compatible quirk the LIS2DH12 node needs.
 
 | Condition | Handling |
 |-----------|----------|
-| BME280 not ready at init | `env_init()` returns `-ENODEV`; `main()` logs `LOG_WRN` and continues so the LED demo still runs. Env is non-critical. |
+| BME280 not ready at init | `env_init()` returns `-ENODEV` and does **not** start the sampling thread; `main()` logs `LOG_WRN` and continues so the LED demo still runs. Env is non-critical. No recurring warnings. |
 | `sensor_sample_fetch` or `channel_get` fails at runtime | `LOG_WRN`, retain last cache, continue looping — no crash, no LED impact. |
 | `env_get()` before first good sample | Returns `false`; the `env` command prints `no sample yet`. |
 
