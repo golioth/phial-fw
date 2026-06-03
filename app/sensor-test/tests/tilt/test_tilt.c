@@ -20,6 +20,13 @@
 
 #define G 9.80665f
 
+/* Identity calibration — tests pin the pure math independent of the
+ * board-specific offset baked into TILT_CAL_DEFAULT. */
+#define CAL_ID { \
+    .offset_deg = 0.0f, .swap_xy = false, .invert_x = false, .invert_y = false, \
+    .enter_ms2 = 2.5f, .exit_ms2 = 1.5f, .seam_margin_deg = 6.0f, \
+}
+
 static int g_checks;
 static int g_failures;
 
@@ -43,14 +50,14 @@ static void accel_for_compass(float compass_deg, float *ax, float *ay)
 
 static void test_flat_is_level(void)
 {
-    const struct tilt_cal id = TILT_CAL_DEFAULT;
+    const struct tilt_cal id = CAL_ID;
     check_eq(TILT_LEVEL, tilt_sector(0.0f, 0.0f, &id), "flat -> level");
     check_eq(TILT_LEVEL, tilt_sector(1.0f, 0.5f, &id), "small tilt -> level");
 }
 
 static void test_cardinals(void)
 {
-    const struct tilt_cal id = TILT_CAL_DEFAULT;
+    const struct tilt_cal id = CAL_ID;
     check_eq(0, tilt_sector(0.0f, -G, &id), "North (ay=-g)");
     check_eq(3, tilt_sector(-G, 0.0f, &id), "East (ax=-g)");
     check_eq(6, tilt_sector(0.0f,  G, &id), "South (ay=+g)");
@@ -59,35 +66,35 @@ static void test_cardinals(void)
 
 static void test_diagonal_resolves_to_one_sector(void)
 {
-    const struct tilt_cal id = TILT_CAL_DEFAULT;
+    const struct tilt_cal id = CAL_ID;
     float dx = 0.866f * G, dy = 0.5f * G;   /* downhill vector, compass 60 */
     check_eq(2, tilt_sector(-dx, -dy, &id), "compass 60 -> sector 2");
 }
 
 static void test_offset_rotates(void)
 {
-    struct tilt_cal c = TILT_CAL_DEFAULT;
+    struct tilt_cal c = CAL_ID;
     c.offset_deg = 90.0f;
     check_eq(3, tilt_sector(0.0f, -G, &c), "N reading + 90 offset -> E");
 }
 
 static void test_invert_x(void)
 {
-    struct tilt_cal c = TILT_CAL_DEFAULT;
+    struct tilt_cal c = CAL_ID;
     c.invert_x = true;
     check_eq(9, tilt_sector(-G, 0.0f, &c), "invert_x: E reading -> W");
 }
 
 static void test_swap_xy(void)
 {
-    struct tilt_cal c = TILT_CAL_DEFAULT;
+    struct tilt_cal c = CAL_ID;
     c.swap_xy = true;
     check_eq(0, tilt_sector(-G, 0.0f, &c), "swap_xy: E reading -> N");
 }
 
 static void test_deadzone_hysteresis(void)
 {
-    struct tilt_state st = { .cal = TILT_CAL_DEFAULT, .last = TILT_LEVEL };
+    struct tilt_state st = { .cal = CAL_ID, .last = TILT_LEVEL };
 
     /* Below enter -> stays level. */
     check_eq(TILT_LEVEL, tilt_update(&st, -2.0f, 0.0f), "below enter -> level");
@@ -101,7 +108,7 @@ static void test_deadzone_hysteresis(void)
 
 static void test_seam_hysteresis(void)
 {
-    struct tilt_state st = { .cal = TILT_CAL_DEFAULT, .last = TILT_LEVEL };
+    struct tilt_state st = { .cal = CAL_ID, .last = TILT_LEVEL };
     float ax, ay;
 
     /* Land squarely in East (sector 3, compass 90). */

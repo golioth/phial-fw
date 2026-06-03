@@ -23,8 +23,12 @@ struct tilt_cal {
     float seam_margin_deg;  /* extra angle past a seam before the lit sector changes */
 };
 
+/* offset_deg = 270 (= -90): bench-calibrated chip-vs-ring rotation. With the
+ * 12-o'clock (North) edge pointed down, the chip reads ax~=-g (its +X points
+ * to ring-West); +270deg rotates the compass so downhill lights the correct LED.
+ * Verified on hardware across all four cardinals. */
 #define TILT_CAL_DEFAULT {            \
-    .offset_deg = 0.0f,               \
+    .offset_deg = 270.0f,             \
     .swap_xy = false,                 \
     .invert_x = false,                \
     .invert_y = false,                \
