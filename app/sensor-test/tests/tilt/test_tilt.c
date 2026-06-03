@@ -25,7 +25,11 @@
 #define CAL_ID { \
     .offset_deg = 0.0f, .swap_xy = false, .invert_x = false, .invert_y = false, \
     .enter_ms2 = 2.5f, .exit_ms2 = 1.5f, .seam_margin_deg = 6.0f, \
+    .coarse_ms2 = 2.5f, .level_ms2 = 0.5f, .zone_hyst_ms2 = 0.3f, \
 }
+
+#define ST_ID() { .cal = CAL_ID, .last_mode = TILT_MODE_LEVEL, \
+                  .last_sector = -1, .last_quadrant = -1 }
 
 static int g_checks;
 static int g_failures;
@@ -92,36 +96,79 @@ static void test_swap_xy(void)
     check_eq(0, tilt_sector(-G, 0.0f, &c), "swap_xy: E reading -> N");
 }
 
-static void test_deadzone_hysteresis(void)
+/* --- zones: magnitude picks LEVEL / FINE / COARSE; sector is correct --- */
+static void test_zones(void)
 {
-    struct tilt_state st = { .cal = CAL_ID, .last = TILT_LEVEL };
+    struct tilt_out o;
 
-    /* Below enter -> stays level. */
-    check_eq(TILT_LEVEL, tilt_update(&st, -2.0f, 0.0f), "below enter -> level");
-    /* Above enter -> rolls to East. */
-    check_eq(3, tilt_update(&st, -G, 0.0f), "above enter -> East");
-    /* Between exit and enter while rolled -> stays East (no snap back). */
-    check_eq(3, tilt_update(&st, -2.0f, 0.0f), "in band while rolled -> hold East");
-    /* Below exit -> returns to level. */
-    check_eq(TILT_LEVEL, tilt_update(&st, -1.0f, 0.0f), "below exit -> level");
+    struct tilt_state lvl = ST_ID();
+    o = tilt_update(&lvl, 0.2f, 0.0f);          /* m=0.2 < level(0.5) */
+    check_eq(TILT_MODE_LEVEL, o.mode, "tiny tilt -> LEVEL");
+
+    struct tilt_state fine = ST_ID();
+    o = tilt_update(&fine, -1.5f, 0.0f);        /* level<m<coarse, East */
+    check_eq(TILT_MODE_FINE, o.mode, "mid tilt -> FINE");
+    check_eq(1, o.sector, "FINE East -> quadrant 1");
+
+    struct tilt_state coarse = ST_ID();
+    o = tilt_update(&coarse, -G, 0.0f);         /* m>=coarse, East */
+    check_eq(TILT_MODE_COARSE, o.mode, "big tilt -> COARSE");
+    check_eq(3, o.sector, "COARSE East -> sector 3");
 }
 
-static void test_seam_hysteresis(void)
+/* --- zone boundaries resist chatter (hysteresis) --- */
+static void test_zone_hysteresis(void)
 {
-    struct tilt_state st = { .cal = CAL_ID, .last = TILT_LEVEL };
+    struct tilt_state st = ST_ID();
+    struct tilt_out o;
+
+    o = tilt_update(&st, -1.5f, 0.0f);  /* -> FINE */
+    check_eq(TILT_MODE_FINE, o.mode, "enter FINE");
+    o = tilt_update(&st, -0.6f, 0.0f);  /* 0.6 > level-hyst(0.2): stays FINE */
+    check_eq(TILT_MODE_FINE, o.mode, "above level-hyst holds FINE");
+    o = tilt_update(&st, -0.1f, 0.0f);  /* below 0.2 -> LEVEL */
+    check_eq(TILT_MODE_LEVEL, o.mode, "below level-hyst -> LEVEL");
+
+    o = tilt_update(&st, -1.5f, 0.0f);  /* back to FINE */
+    check_eq(TILT_MODE_FINE, o.mode, "re-enter FINE");
+    o = tilt_update(&st, -2.6f, 0.0f);  /* 2.6 < coarse+hyst(2.8): stays FINE */
+    check_eq(TILT_MODE_FINE, o.mode, "below coarse+hyst holds FINE");
+    o = tilt_update(&st, -3.0f, 0.0f);  /* > 2.8 -> COARSE */
+    check_eq(TILT_MODE_COARSE, o.mode, "above coarse+hyst -> COARSE");
+}
+
+/* --- coarse seam hysteresis (12-way) still holds within COARSE --- */
+static void test_coarse_seam_hysteresis(void)
+{
+    struct tilt_state st = ST_ID();
+    struct tilt_out o;
     float ax, ay;
 
-    /* Land squarely in East (sector 3, compass 90). */
-    check_eq(3, tilt_update(&st, -G, 0.0f), "land East");
+    accel_for_compass(90.0f, &ax, &ay);          /* |g|=G -> COARSE, East */
+    o = tilt_update(&st, ax, ay);
+    check_eq(3, o.sector, "land COARSE East");
 
-    /* Compass 108: raw sector 4, but within 15+seam(6)=21deg of sector 3's
-     * center (90), |108-90|=18 -> holds at 3. Exercises the hold branch. */
-    accel_for_compass(108.0f, &ax, &ay);
-    check_eq(3, tilt_update(&st, ax, ay), "within seam band holds East");
+    accel_for_compass(108.0f, &ax, &ay);         /* within seam band -> hold 3 */
+    o = tilt_update(&st, ax, ay);
+    check_eq(3, o.sector, "coarse seam holds 3");
 
-    /* Compass 120 (sector 4 center, 30deg away, past band) -> releases to 4. */
-    accel_for_compass(120.0f, &ax, &ay);
-    check_eq(4, tilt_update(&st, ax, ay), "past seam band releases to 4");
+    accel_for_compass(120.0f, &ax, &ay);         /* past band -> release to 4 */
+    o = tilt_update(&st, ax, ay);
+    check_eq(4, o.sector, "coarse seam releases to 4");
+}
+
+/* --- fine quadrant maps each cardinal (downhill) to 0=N,1=E,2=S,3=W --- */
+static void test_fine_quadrants(void)
+{
+    struct tilt_out o;
+    struct tilt_state n = ST_ID(); o = tilt_update(&n, 0.0f, -1.5f);
+    check_eq(TILT_MODE_FINE, o.mode, "N is FINE"); check_eq(0, o.sector, "FINE North -> 0");
+    struct tilt_state e = ST_ID(); o = tilt_update(&e, -1.5f, 0.0f);
+    check_eq(1, o.sector, "FINE East -> 1");
+    struct tilt_state s = ST_ID(); o = tilt_update(&s, 0.0f, 1.5f);
+    check_eq(2, o.sector, "FINE South -> 2");
+    struct tilt_state w = ST_ID(); o = tilt_update(&w, 1.5f, 0.0f);
+    check_eq(3, o.sector, "FINE West -> 3");
 }
 
 int main(void)
@@ -132,8 +179,10 @@ int main(void)
     test_offset_rotates();
     test_invert_x();
     test_swap_xy();
-    test_deadzone_hysteresis();
-    test_seam_hysteresis();
+    test_zones();
+    test_zone_hysteresis();
+    test_coarse_seam_hysteresis();
+    test_fine_quadrants();
 
     printf("\n%d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;

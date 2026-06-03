@@ -47,38 +47,62 @@ int tilt_sector(float ax, float ay, const struct tilt_cal *cal)
     return ((sector % 12) + 12) % 12;
 }
 
-int tilt_update(struct tilt_state *st, float ax, float ay)
+/* Quantize a compass bearing to one of `n` equal sectors (0 = North, CW), with
+ * seam hysteresis: when `last` is a valid sector, hold it until the bearing
+ * moves more than (half-sector + seam_margin) from its center. */
+static int quant_hyst(float compass, int n, int last, float seam_margin)
 {
-    float mag = hypotf(ax, ay);
-    const struct tilt_cal *cal = &st->cal;
+    float step = 360.0f / (float)n;
+    int s = (((int)lroundf(compass / step)) % n + n) % n;
 
-    /* Deadzone with enter/exit hysteresis. */
-    if (st->last == TILT_LEVEL) {
-        if (mag < cal->enter_ms2) {
-            return st->last;           /* stay level */
-        }
-    } else {
-        if (mag < cal->exit_ms2) {
-            st->last = TILT_LEVEL;     /* fall back to level */
-            return st->last;
-        }
-    }
-
-    float compass = downhill_compass_deg(cal, ax, ay);
-    int sector = (((int)lroundf(compass / 30.0f)) % 12 + 12) % 12;
-
-    /* Seam hysteresis: when already showing a ring LED, keep the current sector
-     * until the angle moves more than (15 + seam_margin) deg from that sector's
-     * center, so dithering at a seam doesn't blink between two LEDs. */
-    if (st->last != TILT_LEVEL && sector != st->last) {
-        float last_center = st->last * 30.0f;
+    if (last >= 0 && s != last) {
+        float last_center = (float)last * step;
         float d = fmodf(fabsf(compass - last_center), 360.0f);
         if (d > 180.0f) d = 360.0f - d;
-        if (d <= (15.0f + cal->seam_margin_deg)) {
-            sector = st->last;         /* within the sticky band, hold */
+        if (d <= (step / 2.0f + seam_margin)) {
+            s = last;
+        }
+    }
+    return s;
+}
+
+/* Hysteretic "is m above boundary b": needs a wider push to cross when it would
+ * change state. `currently_above` is the present side of the boundary. */
+static bool above(float m, float b, float h, bool currently_above)
+{
+    return currently_above ? (m > b - h) : (m > b + h);
+}
+
+static enum tilt_mode classify(float m, enum tilt_mode last, const struct tilt_cal *c)
+{
+    bool above_level  = above(m, c->level_ms2,  c->zone_hyst_ms2, last != TILT_MODE_LEVEL);
+    bool above_coarse = above(m, c->coarse_ms2, c->zone_hyst_ms2, last == TILT_MODE_COARSE);
+
+    if (above_coarse) return TILT_MODE_COARSE;
+    if (above_level)  return TILT_MODE_FINE;
+    return TILT_MODE_LEVEL;
+}
+
+struct tilt_out tilt_update(struct tilt_state *st, float ax, float ay)
+{
+    const struct tilt_cal *c = &st->cal;
+    float m = hypotf(ax, ay);
+    enum tilt_mode mode = classify(m, st->last_mode, c);
+    struct tilt_out out = { .mode = mode, .sector = -1 };
+
+    if (mode != TILT_MODE_LEVEL) {
+        float compass = downhill_compass_deg(c, ax, ay);
+        if (mode == TILT_MODE_COARSE) {
+            int last = (st->last_mode == TILT_MODE_COARSE) ? st->last_sector : -1;
+            out.sector = quant_hyst(compass, 12, last, c->seam_margin_deg);
+            st->last_sector = out.sector;
+        } else { /* FINE */
+            int last = (st->last_mode == TILT_MODE_FINE) ? st->last_quadrant : -1;
+            out.sector = quant_hyst(compass, 4, last, c->seam_margin_deg);
+            st->last_quadrant = out.sector;
         }
     }
 
-    st->last = sector;
-    return sector;
+    st->last_mode = mode;
+    return out;
 }
