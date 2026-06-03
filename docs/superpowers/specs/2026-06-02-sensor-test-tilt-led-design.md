@@ -209,3 +209,50 @@ in `tilt.h`.
 - Exact chip-to-ring rotation → resolved empirically via the calibration plan.
 - Whether any ring LED sits exactly at a cardinal vs. between two (affects the
   `sector_to_led` table) → confirmed against the physical board during bring-up.
+
+---
+
+## Addendum — 2026-06-03: implementation reality + "zoom level" v2
+
+Two changes landed during implementation that supersede parts of the above.
+
+### Unit tests run on the host, not native_sim
+
+Zephyr's `native_sim`/POSIX target only builds on **Linux**, and development is
+on macOS. Since `tilt.c` is dependency-free C, the unit tests are a standalone
+host harness (`tests/tilt/test_tilt.c`) compiled with the system `cc` — no
+Zephyr, no twister. Runs on macOS and Linux/CI alike:
+
+    cc -std=c11 -Wall -I ../../src test_tilt.c ../../src/tilt.c -lm -o /tmp/tilt_test && /tmp/tilt_test
+
+Tests pin the math with an explicit identity calibration (`CAL_ID`) so the
+board-specific offset baked into `TILT_CAL_DEFAULT` doesn't perturb them.
+
+Also: all `west build` commands need **`--no-sysbuild`** (secure-only, no
+MCUboot). Calibrated default: **`offset_deg = 270`** (verified on hardware).
+
+### Behavior evolved from "marble" to a two-tier "zoom" level
+
+The single-outer-LED marble was reframed into a precision level with auto-zoom,
+driven by in-plane tilt magnitude `m = hypot(ax, ay)` (still downhill / low-side):
+
+| Zone | When | Display |
+|------|------|---------|
+| **COARSE** | `m ≥ coarse_ms2` (~2.5) | one **outer** ring LED, 12-way downhill bearing |
+| **FINE**   | `level_ms2 ≤ m < coarse_ms2` | one **inner** cardinal LED (LED13–16), 4-way bearing — high-sensitivity near-level zone |
+| **LEVEL**  | `m < level_ms2` (~0.5) | **all 16 LEDs solid** |
+
+- `tilt_update()` now returns `struct tilt_out { enum tilt_mode mode; int sector; }`.
+  `sector` is board-agnostic (0–11 for COARSE, 0–3 cardinal for FINE); `main.c`
+  maps it to a physical LED via `sector_to_led[12]` / `quadrant_to_led[4]`.
+- **Zone hysteresis** (`zone_hyst_ms2`) on both magnitude boundaries; **seam
+  hysteresis** (`seam_margin_deg`) within each tier, generalized to N sectors.
+- `quadrant_to_led = {12,13,14,15}` (LED13 N / LED14 E / LED15 S / LED16 W) is
+  **verify-on-hardware**, same as the outer ring was.
+- EMA smoothing bumped `0.3 → 0.5` for snappier tracking.
+- The `tilt` shell command gained live knobs: `offset`, `coarse`, `level`,
+  `alpha` (all volatile), and `status` now reports mode + magnitude.
+
+True brightness fades / trails ("visual life") remain **out of scope** — they
+need PWM (deferred). The zoom hand-off + full-board level flash provide the
+liveliness without it.
