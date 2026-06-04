@@ -235,3 +235,12 @@
         led15 = &led16;
     };
 };
+
+/ {
+    zephyr,user {
+        /* LF21115TMR omni-polar TMR magnet switch on P1.13 (former DK button0,
+         * deleted above). Push-pull output: low = magnet present, so ACTIVE_LOW
+         * makes the logical pin value 1 = present. No pull needed. */
+        mag-gpios = <&gpio1 13 GPIO_ACTIVE_LOW>;
+    };
+};
