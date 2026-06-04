@@ -64,7 +64,7 @@ static void env_thread(void *p1, void *p2, void *p3)
             g_reading.valid        = true;
             k_mutex_unlock(&g_lock);
 
-            LOG_INF("env: T=%.2f C  RH=%.2f %%  P=%.2f kPa",
+            LOG_INF("T=%.2f C  RH=%.2f %%  P=%.2f kPa",
                     (double)temp, (double)hum, (double)pres);
         } else {
             LOG_WRN("BME280 fetch failed");
@@ -76,11 +76,17 @@ static void env_thread(void *p1, void *p2, void *p3)
 
 int env_init(void)
 {
+    static bool started;
+
+    if (started) {
+        return 0;
+    }
     if (!device_is_ready(bme)) {
         LOG_ERR("BME280 not ready");
         return -ENODEV;
     }
     k_thread_start(env_tid);
+    started = true;
     return 0;
 }
 
