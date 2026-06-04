@@ -104,19 +104,27 @@ configures it `GPIO_INPUT`. Placed in the shared dtsi (consistent with the accel
 
 ### main.c loop changes
 
-Pseudostructure of the per-tick logic (replaces the current "render only on tilt
-change" block):
+Loop-local state (declared in `main()` before the loop): `bool in_magnet_mode = false;`,
+`bool blink_on;`, `int64_t last_blink_ms;` (the latter two are (re)initialized on the
+absent→present edge, so their initial values don't matter). Pseudostructure of the
+per-tick logic (replaces the current "render only on tilt change" block):
 
 ```
 sample accel + EMA (unchanged)
 t = tilt_update(...)                       // keep tilt state current every tick
 
 if (mag_present()) {
-    in_magnet_mode = true;
-    every 500 ms (via k_uptime_get()):
+    if (!in_magnet_mode) {                 // absent -> present edge
+        in_magnet_mode = true;
+        blink_on = false;                  // so the first toggle below turns LEDs ON
+        last_blink_ms = 0;                 // force an immediate first toggle, no stale wait
+    }
+    if (k_uptime_get() - last_blink_ms >= 500) {
+        last_blink_ms = k_uptime_get();
         blink_on = !blink_on;
         for all 16 LEDs: blink_on ? led_on : led_off;
         LOG_INF("magnet: LEDs %s", blink_on ? "ON" : "OFF");
+    }
 } else {
     if (in_magnet_mode) {                  // present -> absent edge
         in_magnet_mode = false;
