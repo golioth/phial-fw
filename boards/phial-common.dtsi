@@ -138,6 +138,20 @@
     };
 };
 
+/* BME280 temperature / humidity / pressure sensor on the Phial sensor bus.
+ * Single compatible (no dual-compatible quirk like the LIS2DH12). NOTE:
+ * CONFIG_BME280 is `default y` when this node is present, so the driver builds
+ * into every app that includes this dtsi (not just sensor-test). Harmless —
+ * a few KB of flash and an unread device. Set CONFIG_BME280=n in an app's
+ * prj.conf if footprint matters there. */
+&i2c30 {
+    bme280: bme280@76 {
+        compatible = "bosch,bme280";
+        reg = <0x76>;
+        status = "okay";
+    };
+};
+
 /* ---------------------------------------------------------------------------
  * Delete the DK's onboard LED and button nodes
  *
