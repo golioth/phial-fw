@@ -11,6 +11,7 @@
 
 #include "tilt.h"
 #include "env.h"
+#include "mag.h"
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
@@ -71,12 +72,21 @@ int main(void)
         LOG_WRN("env sampling disabled (BME280 unavailable)");
     }
 
+    if (mag_init() != 0) {
+        LOG_WRN("magnet sensor disabled (LF21115TMR GPIO unavailable)");
+    }
+
     LOG_INF("Phial sensor-test: zoom level (%d Hz)", 1000 / SAMPLE_MS);
 
     render(leds, g_target);   /* start at LEVEL (all on) until first sample */
 
+    bool in_magnet_mode = false;   /* magnet override is currently driving the LEDs */
+    bool blink_on = false;         /* current blink phase (re-init on entry) */
+    int64_t last_blink_ms = 0;     /* uptime of last blink toggle (re-init on entry) */
+
     while (1) {
         struct sensor_value v[3];
+        struct tilt_out t = g_target;   /* keep last target if a fetch fails */
 
         if (sensor_sample_fetch(accel) == 0 &&
             sensor_channel_get(accel, SENSOR_CHAN_ACCEL_XYZ, v) == 0) {
@@ -84,17 +94,44 @@ int main(void)
             float ay = (float)sensor_value_to_double(&v[1]);
             float az = (float)sensor_value_to_double(&v[2]);
 
-            /* EMA low-pass to kill jitter. */
+            /* EMA low-pass to kill jitter. Keep sampling even in magnet mode so
+             * the tilt target is current the instant the magnet leaves. */
             g_ax += g_alpha * (ax - g_ax);
             g_ay += g_alpha * (ay - g_ay);
             g_az += g_alpha * (az - g_az);
 
-            struct tilt_out t = tilt_update(&g_state, g_ax, g_ay);
-            if (t.mode != g_target.mode || t.sector != g_target.sector) {
-                g_target = t;
-                render(leds, t);
-            }
+            t = tilt_update(&g_state, g_ax, g_ay);
         }
+
+        if (mag_present()) {
+            /* Magnet overrides the display: flash all 16 LEDs at 1 Hz. */
+            if (!in_magnet_mode) {
+                in_magnet_mode = true;
+                blink_on = false;       /* first toggle below turns LEDs ON */
+                last_blink_ms = k_uptime_get() - 500;  /* due now: immediate first toggle */
+            }
+            if (k_uptime_get() - last_blink_ms >= 500) {
+                last_blink_ms = k_uptime_get();
+                blink_on = !blink_on;
+                for (int i = 0; i < NUM_LEDS; i++) {
+                    if (blink_on) {
+                        led_on(leds, i);
+                    } else {
+                        led_off(leds, i);
+                    }
+                }
+                LOG_INF("magnet: LEDs %s", blink_on ? "ON" : "OFF");
+            }
+        } else if (in_magnet_mode) {
+            /* Magnet just removed: leave blink mode, restore the tilt display. */
+            in_magnet_mode = false;
+            g_target = t;
+            render(leds, t);
+        } else if (t.mode != g_target.mode || t.sector != g_target.sector) {
+            g_target = t;
+            render(leds, t);
+        }
+
         k_msleep(SAMPLE_MS);
     }
     return 0;
