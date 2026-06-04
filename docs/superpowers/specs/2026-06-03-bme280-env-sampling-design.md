@@ -148,20 +148,24 @@ The Zephyr BME280 driver matches `compatible = "bosch,bme280"` and
 `CONFIG_BME280` depends on `DT_HAS_BOSCH_BME280_ENABLED` — a single compatible,
 with none of the dual-compatible quirk the LIS2DH12 node needs.
 
-**One difference from the LIS2DH12 precedent, called out so it is not a
-surprise:** `CONFIG_BME280` is `default y` when its DT node is present, whereas
-`CONFIG_LIS2DH` is not. So with the node in the *shared* dtsi, the BME280 driver
-will build into **every app that includes `phial-common.dtsi`** (e.g.
-`led-test`), not just `sensor-test` — it is not truly "inert" elsewhere the way
-the unread LIS2DH node is. This is harmless: a few KB of flash and an
-initialized device that nobody reads. If footprint ever matters for another app,
-set `CONFIG_BME280=n` in that app's `prj.conf`. The node stays in the shared
-dtsi.
+**Corrected post-implementation (the original draft of this section was
+wrong):** `CONFIG_BME280` is `default y` under `depends on
+DT_HAS_BOSCH_BME280_ENABLED`, so with `CONFIG_SENSOR` enabled the driver
+auto-enables purely from the DT node — **no explicit `CONFIG_BME280=y` is
+needed** (the modern Zephyr model). Crucially, the per-driver sensor Kconfigs
+are only sourced inside `if SENSOR` (`drivers/sensor/Kconfig`), so an app that
+does **not** enable `CONFIG_SENSOR` — e.g. `led-test` — gets no BME280 driver at
+all; the shared node is genuinely inert there (verified: `led-test` shows
+`DT_HAS_BOSCH_BME280_ENABLED=y` but no `CONFIG_BME280` and no driver object).
+So the node can live in the shared dtsi with zero footprint impact on
+non-sensor apps. (The earlier claim that it "builds into every app" was the
+old pre-DT-auto-enable mental model and is incorrect.)
 
 ### Kconfig and build
 
-- `prj.conf`: add `CONFIG_BME280=y`. `CONFIG_SENSOR`, `CONFIG_I2C`,
-  `CONFIG_FPU`, and `CONFIG_CBPRINTF_FP_SUPPORT` are already enabled.
+- `prj.conf`: **no `CONFIG_BME280` line needed** — it auto-enables from the DT
+  node because `CONFIG_SENSOR=y` is already set here. `CONFIG_SENSOR`,
+  `CONFIG_I2C`, `CONFIG_FPU`, and `CONFIG_CBPRINTF_FP_SUPPORT` are already enabled.
 - `CMakeLists.txt`: add `src/env.c` to `target_sources(app PRIVATE ...)`.
 
 ## Error handling
@@ -193,7 +197,7 @@ dtsi.
 | File | Change |
 |------|--------|
 | `boards/phial-common.dtsi` | Add `bme280@76` node |
-| `app/sensor-test/prj.conf` | Add `CONFIG_BME280=y` |
+| `app/sensor-test/prj.conf` | (no driver enable needed — auto-enables from DT node; comment only) |
 | `app/sensor-test/CMakeLists.txt` | Add `src/env.c` to sources |
 | `app/sensor-test/src/env.h` | New — `env_reading`, `env_init`, `env_get` |
 | `app/sensor-test/src/env.c` | New — device, thread, cache, `env` shell cmd |
