@@ -11,4 +11,5 @@ target_sources(app PRIVATE
     src/main.c
     src/tilt.c
     src/env.c
+    src/mag.c
 )
