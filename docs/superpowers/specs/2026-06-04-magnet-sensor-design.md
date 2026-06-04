@@ -117,7 +117,7 @@ if (mag_present()) {
     if (!in_magnet_mode) {                 // absent -> present edge
         in_magnet_mode = true;
         blink_on = false;                  // so the first toggle below turns LEDs ON
-        last_blink_ms = 0;                 // force an immediate first toggle, no stale wait
+        last_blink_ms = k_uptime_get()-500; // due now: immediate first toggle, no boot assumption
     }
     if (k_uptime_get() - last_blink_ms >= 500) {
         last_blink_ms = k_uptime_get();
