@@ -10,6 +10,7 @@
 #include <math.h>
 
 #include "tilt.h"
+#include "env.h"
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
@@ -64,6 +65,10 @@ int main(void)
     if (!device_is_ready(accel)) {
         LOG_ERR("Accelerometer (lis2dh12) not ready");
         return -ENODEV;
+    }
+
+    if (env_init() != 0) {
+        LOG_WRN("env sampling disabled (BME280 unavailable)");
     }
 
     LOG_INF("Phial sensor-test: zoom level (%d Hz)", 1000 / SAMPLE_MS);
