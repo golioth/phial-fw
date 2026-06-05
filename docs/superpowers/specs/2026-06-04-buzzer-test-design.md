@@ -40,9 +40,9 @@ using **busy-wait timing** (`k_busy_wait(half_period_us)`):
 
 ```
 half_period_us = 1000000 / (2 * hz)
-toggles        = duration_ms * 1000 / half_period_us   (even count -> ends LOW)
+toggles        = duration_ms * 1000 / half_period_us
 for each toggle: gpio_pin_toggle_dt(&buzzer); k_busy_wait(half_period_us)
-ensure the pin is left LOW at the end
+gpio_pin_set_dt(&buzzer, 0)   /* force idle LOW, regardless of toggle-count parity */
 ```
 
 - **Accuracy:** `k_busy_wait` is microsecond-calibrated, so pitch is accurate to ~1 %
@@ -129,7 +129,10 @@ reference the property — including the existing apps, which do not.
   `EXTRA_CONF_FILE` (like sensor-test), `project(buzzer_test)`, sources `src/main.c`
   and `src/buzzer.c`.
 - `app/buzzer-test/prj.conf` — `CONFIG_GPIO=y`; FP printing not needed (integer Hz);
-  RTT/UART console lines mirroring the other apps so the shell is reachable.
+  RTT/UART console lines mirroring the other apps so the shell is reachable. Like
+  `led-test`, this app does **not** enable `CONFIG_SENSOR`, so the shared BME280 /
+  LIS2DH nodes are inert here (their driver Kconfigs are sourced only under
+  `if SENSOR`) — no sensor drivers are compiled in and no `CONFIG_BME280=n` is needed.
 - `app/buzzer-test/boards/nrf54l15dk_nrf54l15_cpuapp.overlay` — `#include`s
   `../../../boards/phial-common.dtsi`.
 - `app/buzzer-test/sample.yaml` — mirror the sibling apps.
