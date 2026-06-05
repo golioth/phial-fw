@@ -1,0 +1,17 @@
+sample:
+  name: Phial buzzer test
+  description: Play GPIO square-wave test tones on the P0.04 buzzer via the shell.
+
+common:
+  build_only: true
+  tags:
+    - phial
+    - buzzer
+    - shell
+
+tests:
+  sample.phial.buzzer_test:
+    platform_allow:
+      - nrf54l15dk/nrf54l15/cpuapp
+    integration_platforms:
+      - nrf54l15dk/nrf54l15/cpuapp
