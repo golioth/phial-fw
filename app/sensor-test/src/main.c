@@ -28,6 +28,13 @@ static const uint8_t sector_to_led[12] = {
  * LED13 N(12), LED14 E(13), LED15 S(14), LED16 W(15). Verify on hardware. */
 static const uint8_t quadrant_to_led[4] = { 12, 13, 14, 15 };
 
+/* Magnet-present LED pattern: two quick pulses then a pause (~1 Hz), visually
+ * distinct from the solid "level" state. {LEDs on?, hold duration ms}. */
+static const struct { bool on; int32_t ms; } mag_blink[] = {
+    { true, 80 }, { false, 80 }, { true, 80 }, { false, 760 },
+};
+#define MAG_BLINK_STEPS  ((int)ARRAY_SIZE(mag_blink))
+
 /* Shared so the `tilt` shell command can read/tune live. */
 static struct tilt_state g_state = TILT_STATE_INIT;
 static float g_alpha = 0.5f;         /* EMA smoothing (higher = snappier) */
@@ -81,8 +88,8 @@ int main(void)
     render(leds, g_target);   /* start at LEVEL (all on) until first sample */
 
     bool in_magnet_mode = false;   /* magnet override is currently driving the LEDs */
-    bool blink_on = false;         /* current blink phase (re-init on entry) */
-    int64_t last_blink_ms = 0;     /* uptime of last blink toggle (re-init on entry) */
+    int blink_step = 0;            /* index into mag_blink[] (re-init on entry) */
+    int64_t step_start_ms = 0;     /* uptime when the current blink step began */
 
     while (1) {
         struct sensor_value v[3];
@@ -104,23 +111,28 @@ int main(void)
         }
 
         if (mag_present()) {
-            /* Magnet overrides the display: flash all 16 LEDs at 1 Hz. */
+            /* Magnet overrides the display: two quick pulses then a pause (~1 Hz),
+             * visually distinct from the solid "level" state. */
+            int64_t now = k_uptime_get();
+
             if (!in_magnet_mode) {
                 in_magnet_mode = true;
-                blink_on = false;       /* first toggle below turns LEDs ON */
-                last_blink_ms = k_uptime_get() - 500;  /* due now: immediate first toggle */
+                blink_step = MAG_BLINK_STEPS - 1;            /* advance below wraps to step 0 */
+                step_start_ms = now - mag_blink[blink_step].ms;  /* due now: first pulse immediately */
             }
-            if (k_uptime_get() - last_blink_ms >= 500) {
-                last_blink_ms = k_uptime_get();
-                blink_on = !blink_on;
+            if (now - step_start_ms >= mag_blink[blink_step].ms) {
+                blink_step = (blink_step + 1) % MAG_BLINK_STEPS;
+                step_start_ms = now;
                 for (int i = 0; i < NUM_LEDS; i++) {
-                    if (blink_on) {
+                    if (mag_blink[blink_step].on) {
                         led_on(leds, i);
                     } else {
                         led_off(leds, i);
                     }
                 }
-                LOG_INF("magnet: LEDs %s", blink_on ? "ON" : "OFF");
+                if (blink_step == 0) {
+                    LOG_INF("magnet: flash");   /* once per double-blink cycle */
+                }
             }
         } else if (in_magnet_mode) {
             /* Magnet just removed: leave blink mode, restore the tilt display. */
