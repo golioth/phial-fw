@@ -242,5 +242,9 @@
          * deleted above). Push-pull output: low = magnet present, so ACTIVE_LOW
          * makes the logical pin value 1 = present. No pull needed. */
         mag-gpios = <&gpio1 13 GPIO_ACTIVE_LOW>;
+        /* ~4 kHz buzzer (transducer) on P0.04 (former DK button3, deleted above).
+         * PWM can't reach P0 on nRF54L (power-domain split), so app/buzzer-test
+         * drives it via CPU GPIO toggle. */
+        buzzer-gpios = <&gpio0 4 GPIO_ACTIVE_HIGH>;
     };
 };
