@@ -33,23 +33,23 @@ PDM mic on this board.
   (`CONFIG_AUDIO_DMIC` / `CONFIG_AUDIO_DMIC_NRFX_PDM`) drive it.
 - **Button:** the "boot" button on **P1.12** (not one of the four DK buttons, which were on
   P1.13/P1.09/P1.08/P0.04 and are `/delete-node/`'d in `phial-common.dtsi`). Active-low
-  (pressed → GND), configured as input with an internal pull-up. Polarity is a
-  hardware-verify item — trivially flipped if it reads inverted (same as the magnet part).
+  (pressed → GND), configured as input with an internal pull-up — polarity confirmed on
+  this board.
 
-### Audio format and the 8 kHz / low-power-mode note
+### Audio format (16 kHz, normal mic mode)
 
-- **Format:** 8 kHz sample rate, 16-bit signed PCM, mono (left channel only).
-- **Sizing:** 8 kHz × 2 bytes = **16 KB/s**; 4 s ≈ **64 KB**. Drives a 64 KB RAM capture
-  buffer and a 64 KB flash partition.
+- **Format:** 16 kHz sample rate, 16-bit signed PCM, mono (left channel only).
+- **Sizing:** 16 kHz × 2 bytes = **32 KB/s**; 4 s ≈ **128 KB**. Drives a 128 KB RAM capture
+  buffer and a 128 KB flash partition. 128 KB is ~68 % of the 188 KB `cpuapp_sram`; the
+  remaining ~60 KB covers stacks, the shell/log buffers, the DMIC driver slab, and RTT
+  buffers. Implementation must confirm the image still links (if RAM is tight, the buffer
+  is the one knob — shrink it / the clip cap).
 - **PDM clock:** the DMIC driver derives the PDM clock from the requested PCM rate
-  (rate × decimation 64). 8 kHz → ~**512 kHz** PDM clock, which is in the MP34DT05's
-  **low-power clock mode** (~0.35–0.8 MHz) — in spec, slightly lower SNR than its 16 kHz
-  "normal" mode (~1.0–3.25 MHz). Acceptable for a voice bring-up demo. To allow it, the
-  app sets `dmic_cfg.io.min_pdm_clk_freq`/`max_pdm_clk_freq` to roughly 0.35–0.8 MHz so the
-  driver lands on ~512 kHz. The **actual** rate the driver settles on is read back from
-  `dmic_configure()` and used for the WAV header — we do not assume exactly 8000 Hz.
-- **Future:** bumping to 16 kHz (normal mode, better SNR) is a one-line rate change plus a
-  bigger buffer/partition; out of scope here.
+  (rate × decimation 64). 16 kHz → ~**1.024 MHz** PDM clock, squarely in the MP34DT05's
+  **normal clock mode** (~1.0–3.25 MHz) for full SNR. The app sets
+  `dmic_cfg.io.min_pdm_clk_freq`/`max_pdm_clk_freq` to roughly 1.0–3.25 MHz so the driver
+  lands near 1.024 MHz. The **actual** rate the driver settles on is read back from
+  `dmic_configure()` and used for the WAV header — we do not hard-assume exactly 16000 Hz.
 
 ## Non-goals
 
@@ -60,16 +60,18 @@ PDM mic on this board.
 - **No streaming-to-flash.** Capture lands in RAM first, flushed once on release
   (see Architecture / rejected alternatives).
 - **No multi-clip management.** One clip slot; a new recording overwrites the previous.
+- **No DFU / MCUboot.** Standalone secure-only image; this is why the `slot1` RRAM region
+  is free for the clip store (see Flash partition).
 
 ## Capture flow (chosen approach: capture-to-RAM, flush-on-release)
 
-While the button is held, the DMIC streams PCM blocks into a preallocated 64 KB RAM
+While the button is held, the DMIC streams PCM blocks into a preallocated 128 KB RAM
 buffer (linear, bounded — stops at full ≈ 4 s); all 16 LEDs are solid on. On release the
 DMIC stops, a WAV header is prepended, and the whole buffer is written to the flash
 partition in one pass. Flash is written exactly once, when nothing is time-critical.
 
 **Rejected — stream directly to flash:** write each DMIC block to RRAM as it arrives.
-RRAM write latency + write-block/erase semantics risk not keeping up with the 16 KB/s
+RRAM write latency + write-block/erase semantics risk not keeping up with the 32 KB/s
 stream (dropped samples), for more complexity and no benefit at this clip size.
 
 **Rejected — capture to RAM, read RAM over J-Link (skip flash):** simpler, but ignores
@@ -88,12 +90,12 @@ Five units, each with one responsibility, mirroring the repo's module style:
 3. **`wav.c` / `wav.h` — pure WAV header builder.** Fills a 44-byte canonical PCM
    WAV/RIFF header for a given sample count + rate. No hardware; the one unit-tested piece.
 4. **`main.c` — orchestrator.** Owns the button GPIO (P1.12) and the 16 LEDs, runs the
-   press→capture→release→store state machine, owns the 64 KB capture buffer (static), and
+   press→capture→release→store state machine, owns the 128 KB capture buffer (static), and
    registers the `mic` shell command. The only writer of the LED device (no concurrency).
 5. **Devicetree** — enable `pdm20` w/ pinctrl, add `button-gpios` to `zephyr,user`, add the
    `mic_clip` flash partition.
 
-The 64 KB capture buffer is a `static int16_t[32000]` in `main.c`, passed by pointer into
+The 128 KB capture buffer is a `static int16_t[65536]` in `main.c`, passed by pointer into
 `mic_capture()`, so `mic.c` is allocation-free and the buffer size is owned in one place.
 
 ### Public interfaces
@@ -167,7 +169,7 @@ same precedent as the accel/BME280 nodes.
 
 ### Flash partition (`mic_clip`)
 
-The existing `storage` partition is only 36 KB; we need ~64 KB. Add a dedicated
+The existing `storage` partition is only 36 KB; we need ~128 KB. Add a dedicated
 `mic_clip` fixed-partition in the RRAM region MCUboot would use for **`slot1` (image-1)**.
 This app runs secure-only with **no MCUboot and no DFU**, so slot1 (664 KB @ `0xb6000`) is
 never used and is free for app data. Carve its tail:
@@ -175,19 +177,19 @@ never used and is free for app data. Carve its tail:
 ```dts
 &cpuapp_rram {
     partitions {
-        mic_clip_partition: partition@14c000 {
+        mic_clip_partition: partition@13c000 {
             label = "mic_clip";
-            reg = <0x14c000 DT_SIZE_K(64)>;   /* 0x14c000..0x15c000 */
+            reg = <0x13c000 DT_SIZE_K(128)>;   /* 0x13c000..0x15c000 */
         };
     };
 };
 ```
 
-`0x14c000 + 0x10000 = 0x15c000`, exactly where the `storage` partition begins, and clear
-of `cpuflpr_rram` (0x165000) — no overlap with anything *in use*. It does sit inside the
-*declared* slot1 range; that is intentional and safe given no MCUboot. (Alternative, noted
-but not chosen: shrink slot1 in an overlay so nothing overlaps the declared region. The
-plain add is simpler and the overlap is inert.)
+`0x13c000 + 0x20000 = 0x15c000`, exactly where the `storage` partition begins, and clear
+of `cpuflpr_rram` (0x165000) — no overlap with anything *in use*. It sits inside the
+*declared* slot1 range (0xb6000..0x15c000); that is intentional and safe given no MCUboot.
+(Alternative, noted but not chosen: shrink slot1 in an overlay so nothing overlaps the
+declared region. The plain add is simpler and the overlap is inert.)
 
 `store.c` references it by label via `FIXED_PARTITION_ID(mic_clip_partition)` /
 `flash_area_open()`.
@@ -196,7 +198,7 @@ plain add is simpler and the overlap is inert.)
 
 1. `flash_area_open(FIXED_PARTITION_ID(mic_clip_partition), &fa)`.
 2. `flash_area_erase(fa, 0, <rounded size>)` — RRAM is written through the flash API;
-   erase first to honor write-block semantics.
+   erase first to honor write-block semantics (RRAM `write-block-size` is 16 bytes).
 3. `wav_header(hdr, samples, rate)`; `flash_area_write(fa, 0, hdr, 44)`; then write the PCM
    immediately after, chunked to the flash write-block-size with end-padding as required by
    the alignment rules.
@@ -213,9 +215,11 @@ host-side assembly.
 - `prj.conf` — `CONFIG_GPIO=y`, `CONFIG_AUDIO=y`, `CONFIG_AUDIO_DMIC=y`,
   `CONFIG_AUDIO_DMIC_NRFX_PDM=y`, `CONFIG_FLASH=y`, `CONFIG_FLASH_MAP=y`; the RTT/UART
   console block mirroring the sibling apps. Does **not** enable `CONFIG_SENSOR`, so the
-  shared BME280/LIS2DH nodes stay inert here.
+  shared LIS2DH node stays inert here; `CONFIG_BME280=n` is set so the BME280 driver (which
+  is `default y` whenever its dtsi node is present) is not pulled into this audio app.
 - `boards/nrf54l15dk_nrf54l15_cpuapp.overlay` — `#include`s `../../../boards/phial-common.dtsi`.
 - `sample.yaml` — `build_only`, tags `phial` / `mic` / `shell`.
+- `README.md` — top-level app README (see below).
 
 ## Orchestration (`main.c`)
 
@@ -224,7 +228,7 @@ thread is needed — and `main` is the sole LED writer, so no LED concurrency):
 
 ```
 Idle:           LEDs off; poll button.
-Press edge:     all 16 LEDs on; mic_capture(buf, 32000, button_still_pressed,
+Press edge:     all 16 LEDs on; mic_capture(buf, 65536, button_still_pressed,
                                              &n, &rate) — blocks until release or full.
 Release / full: LEDs off; if n > 0: store_save_wav(buf, n, rate);
                 log one-line summary + the nrfjprog/JLink readback command; -> Idle.
@@ -243,6 +247,21 @@ release-detection latency — imperceptible.
 
 Recording itself is button-driven, not a shell command (YAGNI).
 
+## App README (`app/mic-test/README.md`)
+
+A short top-level README so the demo is self-documenting, covering:
+- **What it does** — hold the boot button to record from the PDM mic; release to store a
+  WAV to flash.
+- **Hardware** — MP34DT05TR-A, MIC_CLK P1.05 / MIC_DATA P1.04, boot button P1.12; 16 kHz /
+  16-bit mono, ~4 s max.
+- **Build & flash** — the standard `west build -p -b nrf54l15dk/nrf54l15/cpuapp
+  --no-sysbuild app/mic-test` and flash, consistent with the sibling apps.
+- **Record** — hold the button (LEDs all on while recording), release to stop.
+- **Retrieve** — copy the `nrfjprog`/JLink command the console prints (clip address +
+  length) to read the `mic_clip` partition off the board into a `.wav` and play it; note
+  the exact nRF54L RRAM read syntax is to be confirmed during bring-up.
+- **Shell** — `mic info` / `mic erase`.
+
 ## Error handling
 
 | Condition | Handling |
@@ -252,16 +271,17 @@ Recording itself is button-driven, not a shell command (YAGNI).
 | Buffer fills before release | Stop at ~4 s, `LOG_INF` "max length reached," store normally. |
 | `flash_area_*` erase/write error | `store_save_wav` returns <0; `main` logs `LOG_ERR`; `clip_info` not updated; any previous clip untouched. |
 | Button never pressed | Idle indefinitely; nothing logged. |
-| Button polarity inverted on hardware | Flip `GPIO_ACTIVE_LOW`↔`GPIO_ACTIVE_HIGH` in the dtsi (hardware-verify item). |
 
 ## Testing
 
 - **Host unit test** for `wav.c` (`wav_header`): assert the RIFF/WAVE/fmt /data tag bytes,
   the chunk sizes, sample rate, byte-rate (`rate*2`), block-align (2), bits-per-sample (16),
-  and `data` size (`samples*2`) for a couple of sample-count/rate inputs. Host-cc, like
-  `tilt.c`. The only pure logic worth isolating.
+  and `data` size (`samples*2`) for a couple of sample-count/rate inputs. Self-contained
+  `cc`-compiled host test under `app/mic-test/tests/wav/test_wav.c`, mirroring
+  `app/sensor-test/tests/tilt/test_tilt.c` (native_sim is Linux-only; this runs on macOS
+  too). The only pure logic worth isolating.
 - **Build verification:** clean pristine `--no-sysbuild` build for
-  `nrf54l15dk/nrf54l15/cpuapp`.
+  `nrf54l15dk/nrf54l15/cpuapp`; confirm the image links with the 128 KB static buffer.
 - **On-hardware:**
   1. Hold the boot button → all 16 LEDs light solid.
   2. Speak; release → console logs clip address / length / duration + the readback command;
@@ -270,7 +290,7 @@ Recording itself is button-driven, not a shell command (YAGNI).
      and confirm it plays back recognizable audio.
   4. `mic info` reports the same address/length/duration.
   5. `mic erase`, then `mic info` reports no clip.
-  6. Hold > 4 s → "max length reached" logged, a 4 s clip still stores and plays.
+  6. Hold > 4 s → "max length reached" logged, a ~4 s clip still stores and plays.
 
 ## Files touched
 
@@ -280,9 +300,10 @@ Recording itself is button-driven, not a shell command (YAGNI).
 | `app/mic-test/CMakeLists.txt` | New |
 | `app/mic-test/prj.conf` | New |
 | `app/mic-test/sample.yaml` | New |
+| `app/mic-test/README.md` | New — app overview, build, record, retrieve |
 | `app/mic-test/boards/nrf54l15dk_nrf54l15_cpuapp.overlay` | New — includes phial-common.dtsi |
 | `app/mic-test/src/mic.h` / `mic.c` | New — DMIC config + bounded capture |
 | `app/mic-test/src/store.h` / `store.c` | New — WAV write to flash + clip info |
 | `app/mic-test/src/wav.h` / `wav.c` | New — pure WAV header builder (unit-tested) |
 | `app/mic-test/src/main.c` | New — button/LED state machine + `mic` shell cmd |
-| `app/mic-test/tests/` (or host test location matching repo) | New — `wav_header` host unit test |
+| `app/mic-test/tests/wav/test_wav.c` | New — `wav_header` host unit test |
