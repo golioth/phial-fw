@@ -37,8 +37,8 @@ e.g.:
 
 ```
 mic info
-clip: 64044 bytes WAV @ 0x13c000  (32000 samples, 16000 Hz, 2000 ms)
-read off (binary) in a J-Link session:  savebin rec.wav 0x13c000 64044
+clip: 128044 bytes WAV @ 0x13c000  (64000 samples, 16000 Hz, 4000 ms)
+read off (binary) in a J-Link session:  savebin rec.wav 0x13c000 128044
 ```
 
 Dump the `mic_clip` region into `rec.wav` and play it. Use a tool that writes
@@ -46,7 +46,7 @@ Dump the `mic_clip` region into `rec.wav` and play it. Use a tool that writes
 
 ```bash
 JLinkExe -device nRF54L15_M33 -if SWD -speed 4000 -autoconnect 1
-J-Link> savebin rec.wav 0x13c000 64044
+J-Link> savebin rec.wav 0x13c000 128044
 ```
 
 Note: `nrfjprog --memrd` prints a **hex text** dump, not binary — redirecting it
