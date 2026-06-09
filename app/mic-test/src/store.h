@@ -8,14 +8,16 @@
 
 #include <zephyr/storage/flash_map.h>
 
+#include "wav.h"   /* WAV_HEADER_BYTES */
+
 /* The mic_clip partition. */
 #define MIC_CLIP_PARTITION   mic_clip_partition
 #define MIC_CLIP_SIZE        FIXED_PARTITION_SIZE(MIC_CLIP_PARTITION)
 
-/* Largest clip (in samples) whose WAV (44-byte header + 16-bit-mono PCM) fits
- * the partition. Rounded down to a multiple of 8 samples so the PCM byte count
- * is a multiple of the 16-byte flash write block. */
-#define MIC_MAX_SAMPLES      ((((MIC_CLIP_SIZE) - 44U) / 2U) & ~7U)
+/* Largest clip (in samples) whose WAV (header + 16-bit-mono PCM) fits the
+ * partition. Rounded down to a multiple of 8 samples so the PCM byte count is a
+ * multiple of the 16-byte flash write block. */
+#define MIC_MAX_SAMPLES      ((((MIC_CLIP_SIZE) - WAV_HEADER_BYTES) / 2U) & ~7U)
 
 struct clip_info {
     uint32_t addr;     /* absolute flash address of the WAV (partition base) */

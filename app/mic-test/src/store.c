@@ -78,11 +78,15 @@ int store_save_wav(const int16_t *pcm, size_t samples, uint32_t rate)
         }
     }
 
-    last.addr    = (uint32_t)fa->fa_off;   /* absolute RRAM address */
-    last.len     = total;
-    last.samples = (uint32_t)samples;
-    last.rate    = rate;
-    last.valid   = true;
+    /* Publish as one compound-literal store so the shell thread (which reads
+     * `last` via store_last) can't observe valid=true alongside stale fields. */
+    last = (struct clip_info){
+        .addr    = (uint32_t)fa->fa_off,   /* absolute RRAM address */
+        .len     = total,
+        .samples = (uint32_t)samples,
+        .rate    = rate,
+        .valid   = true,
+    };
     rc = 0;
 
 out:
