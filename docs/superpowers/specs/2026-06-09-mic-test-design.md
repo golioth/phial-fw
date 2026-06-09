@@ -97,6 +97,10 @@ Five units, each with one responsibility, mirroring the repo's module style:
 
 The 128 KB capture buffer is a `static int16_t[65536]` in `main.c`, passed by pointer into
 `mic_capture()`, so `mic.c` is allocation-free and the buffer size is owned in one place.
+Place it in `.noinit` (Zephyr's `__noinit` macro) so it is neither zero-initialized at
+boot nor counted as initialized data — it is fully overwritten by each capture anyway.
+The implementation should report the actual `bss`/`noinit` figures from the link map so
+the ~60 KB headroom is a measured number, not an estimate.
 
 ### Public interfaces
 
