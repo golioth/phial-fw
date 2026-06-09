@@ -18,7 +18,7 @@ Capture format: **16 kHz, 16-bit mono**, ~4 s max (128 KB `mic_clip` partition).
 ## Build & flash
 
 ```bash
-cd /Users/chrisg/golioth/phial-fw/phial-app
+# from the west manifest dir (the phial-app repo root)
 west build -p -b nrf54l15dk/nrf54l15/cpuapp --no-sysbuild app/mic-test
 west flash
 ```
