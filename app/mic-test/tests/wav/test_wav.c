@@ -43,7 +43,7 @@ static void check_tag(const uint8_t *p, const char *tag)
 
 static void test_header(uint32_t samples, uint32_t rate)
 {
-    uint8_t h[44];
+    uint8_t h[WAV_HEADER_BYTES];
     uint32_t data = samples * 2;
 
     memset(h, 0xAA, sizeof(h));    /* poison: prove every byte is written */
