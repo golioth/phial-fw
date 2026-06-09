@@ -12,10 +12,11 @@ LOG_MODULE_REGISTER(mic, LOG_LEVEL_INF);
 
 #define PDM_NODE        DT_NODELABEL(pdm20)
 
-/* ~10 ms PCM block: small enough that polling keep_going() between reads gives
- * ~10 ms button-release latency; big enough to keep DMA churn low. */
+/* ~10 ms PCM block. keep_going() is polled once per block, so worst-case stop
+ * latency is one block period plus READ_TIMEOUT_MS (~210 ms) — fine for a
+ * hand-held button. Small blocks keep DMA churn low. */
 #define BLOCK_MS        10U
-#define BLOCK_SAMPLES   (MIC_SAMPLE_RATE / 100U * (BLOCK_MS / 10U))   /* 160 */
+#define BLOCK_SAMPLES   (MIC_SAMPLE_RATE * BLOCK_MS / 1000U)   /* 160 */
 #define BLOCK_BYTES     (BLOCK_SAMPLES * sizeof(int16_t))            /* 320 */
 #define BLOCK_COUNT     8U
 #define READ_TIMEOUT_MS 200
