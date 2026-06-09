@@ -11,4 +11,5 @@ project(mic_test)
 target_sources(app PRIVATE
     src/main.c
     src/wav.c
+    src/mic.c
 )
