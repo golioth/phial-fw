@@ -246,5 +246,60 @@
          * PWM can't reach P0 on nRF54L (power-domain split), so app/buzzer-test
          * drives it via CPU GPIO toggle. */
         buzzer-gpios = <&gpio0 4 GPIO_ACTIVE_HIGH>;
+        /* "boot" button on P1.12 (a Phial button, not one of the deleted DK
+         * buttons). Active-low (pressed -> GND); configured with an internal
+         * pull-up in firmware. Polarity confirmed on this board. */
+        button-gpios = <&gpio1 12 GPIO_ACTIVE_LOW>;
+    };
+};
+
+/* ---------------------------------------------------------------------------
+ * PDM microphone (MP34DT05TR-A) on pdm20.
+ *
+ * pdm20 lives in the peripheral GPIO domain (0xd0000 block), so it can route to
+ * P1 pins: MIC_CLK = P1.05, MIC_DATA = P1.04. Inert for apps that do not enable
+ * CONFIG_AUDIO_DMIC (led/sensor/buzzer-test); app/mic-test drives it.
+ * ------------------------------------------------------------------------- */
+&pinctrl {
+    /omit-if-no-ref/ pdm20_phial_default: pdm20_phial_default {
+        group1 {
+            psels = <NRF_PSEL(PDM_CLK, 1, 5)>,    /* MIC_CLK  P1.05 */
+                    <NRF_PSEL(PDM_DIN, 1, 4)>;     /* MIC_DATA P1.04 */
+        };
+    };
+};
+
+&pdm20 {
+    status = "okay";
+    pinctrl-0 = <&pdm20_phial_default>;
+    pinctrl-names = "default";
+    clock-source = "PCLK32M_HFXO";   /* crystal-backed, low jitter; fall back to
+                                       * "PCLK32M" if the HFXO won't start */
+};
+
+/* ---------------------------------------------------------------------------
+ * mic_clip flash partition — 128 KB of RRAM for app/mic-test's WAV clip.
+ *
+ * Carved from the tail of the RRAM region MCUboot would use for slot1 (image-1,
+ * 0xb6000, 664K). This repo builds secure-only with no MCUboot/no DFU, so slot1
+ * is unused and free. 0x13c000 + 128K = 0x15c000 = the `storage` partition base
+ * (abuts, no overlap); clear of cpuflpr_rram at 0x165000. Inert for apps that
+ * never open it.
+ *
+ * The nRF54L15 SoC dtsi defines slot1_partition at 0xb6000 with size 0xa6000
+ * (ending at 0x15c000). We shrink it to end at 0x13c000 (size 0x86000) to make
+ * room, then declare mic_clip in the freed tail. Both changes are checked by
+ * validate_rram_partitions.c at compile time.
+ * ------------------------------------------------------------------------- */
+&cpuapp_rram {
+    partitions {
+        /* Shrink slot1 so it ends at 0x13c000, freeing the tail for mic_clip. */
+        slot1_partition: partition@b6000 {
+            reg = <0xb6000 0x86000>;   /* 0xb6000..0x13c000 (was 0xa6000/664K, now 0x86000/536K) */
+        };
+        mic_clip_partition: partition@13c000 {
+            label = "mic_clip";
+            reg = <0x13c000 DT_SIZE_K(128)>;   /* 0x13c000..0x15c000 */
+        };
     };
 };
