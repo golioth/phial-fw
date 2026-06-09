@@ -256,7 +256,7 @@
 /* ---------------------------------------------------------------------------
  * PDM microphone (MP34DT05TR-A) on pdm20.
  *
- * pdm20 lives in the peripheral GPIO domain (0xd0000 block), so it can route to
+ * pdm20 is on the global peripheral bus alongside gpio1, so it can route to
  * P1 pins: MIC_CLK = P1.05, MIC_DATA = P1.04. Inert for apps that do not enable
  * CONFIG_AUDIO_DMIC (led/sensor/buzzer-test); app/mic-test drives it.
  * ------------------------------------------------------------------------- */
@@ -295,7 +295,7 @@
     partitions {
         /* Shrink slot1 so it ends at 0x13c000, freeing the tail for mic_clip. */
         slot1_partition: partition@b6000 {
-            reg = <0xb6000 0x86000>;   /* 0xb6000..0x13c000 (was 0xa6000/664K, now 0x86000/536K) */
+            reg = <0xb6000 DT_SIZE_K(536)>;   /* 0xb6000..0x13c000 (was 664K, shrunk to free 128K for mic_clip) */
         };
         mic_clip_partition: partition@13c000 {
             label = "mic_clip";
