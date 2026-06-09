@@ -7,9 +7,12 @@ adapted for multiple test/demo applications living side-by-side.
 
 ## Applications
 
-| Path              | Purpose                                                    | Phase  |
-|-------------------|------------------------------------------------------------|--------|
-| `app/led-test/`   | Drive all 16 LEDs; exercise Zephyr shell + I²C + GPIO       | 1, 2   |
+| Path               | Purpose                                                                 |
+|--------------------|-------------------------------------------------------------------------|
+| `app/led-test/`    | Drive all 16 LEDs; exercise Zephyr shell + I²C + GPIO                    |
+| `app/sensor-test/` | Tilt→LED compass (LIS2DH), BME280 env logging, LF21115TMR magnet switch |
+| `app/buzzer-test/` | Half-octave test tones (800→8000 Hz) on the P0.04 buzzer via the shell  |
+| `app/mic-test/`    | Record the MP34DT05 PDM mic (button-held) to a flash WAV — see its README |
 
 ## Setup
 
