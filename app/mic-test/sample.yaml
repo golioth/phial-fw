@@ -1,0 +1,17 @@
+sample:
+  name: Phial mic test
+  description: Record from the MP34DT05 PDM mic while the boot button is held; store a WAV to flash.
+
+common:
+  build_only: true
+  tags:
+    - phial
+    - mic
+    - shell
+
+tests:
+  sample.phial.mic_test:
+    platform_allow:
+      - nrf54l15dk/nrf54l15/cpuapp
+    integration_platforms:
+      - nrf54l15dk/nrf54l15/cpuapp
