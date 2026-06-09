@@ -251,7 +251,19 @@ release-detection latency — imperceptible.
 
 Recording itself is button-driven, not a shell command (YAGNI).
 
-## App README (`app/mic-test/README.md`)
+## Documentation
+
+Two README touches, kept distinct:
+
+### Repo README (`README.md`) — refresh the apps overview
+
+The top-level `Applications` table is stale (it lists only `app/led-test`, though
+`sensor-test` and `buzzer-test` already exist). Bring it current with one row per app —
+`led-test`, `sensor-test`, `buzzer-test`, and the new `mic-test` — each with a one-line
+purpose and a link to the app's own README/spec where one exists. This is a
+documentation-only edit to the existing table; do not restructure the rest of the README.
+
+### App README (`app/mic-test/README.md`)
 
 A short top-level README so the demo is self-documenting, covering:
 - **What it does** — hold the boot button to record from the PDM mic; release to store a
@@ -301,6 +313,7 @@ A short top-level README so the demo is self-documenting, covering:
 | File | Change |
 |------|--------|
 | `boards/phial-common.dtsi` | Enable `pdm20` + pinctrl; add `button-gpios` to `zephyr,user`; add `mic_clip_partition` |
+| `README.md` (repo top-level) | Refresh the `Applications` table to list all apps (led/sensor/buzzer/mic-test) |
 | `app/mic-test/CMakeLists.txt` | New |
 | `app/mic-test/prj.conf` | New |
 | `app/mic-test/sample.yaml` | New |
