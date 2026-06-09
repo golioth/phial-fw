@@ -28,7 +28,7 @@ After cloning, initialize and update west to pull NCS as a sibling tree:
 
 Phase 1 build target (secure-only, no bootloader):
 
-    west build -p -b nrf54l15dk/nrf54l15/cpuapp app/led-test
+    west build -p -b nrf54l15dk/nrf54l15/cpuapp --no-sysbuild app/led-test
     west flash
 
 Open a serial console at **115200 8N1** (see wiring below). You should see:

@@ -130,9 +130,10 @@ static int cmd_mic_info(const struct shell *sh, size_t argc, char **argv)
     shell_print(sh, "clip: %u bytes WAV @ 0x%06x  (%u samples, %u Hz, %u ms)",
                 c.len, c.addr, c.samples, c.rate,
                 (c.rate ? (c.samples * 1000U / c.rate) : 0U));
-    shell_print(sh, "read off with:  nrfjprog --memrd 0x%06x --n %u  > rec.wav",
+    shell_print(sh, "read off (binary) in a J-Link session:  savebin rec.wav 0x%06x %u",
                 c.addr, c.len);
-    shell_print(sh, "(confirm the exact nRF54L RRAM read syntax for your tool)");
+    shell_print(sh, "(savebin writes raw bytes = a playable .wav; an nrfjprog "
+                    "--memrd dump is hex text, not a WAV)");
     return 0;
 }
 

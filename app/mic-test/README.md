@@ -38,12 +38,21 @@ e.g.:
 ```
 mic info
 clip: 64044 bytes WAV @ 0x13c000  (32000 samples, 16000 Hz, 2000 ms)
-read off with:  nrfjprog --memrd 0x13c000 --n 64044  > rec.wav
+read off (binary) in a J-Link session:  savebin rec.wav 0x13c000 64044
 ```
 
-Run that command on the host to dump the `mic_clip` region into `rec.wav`, then
-play it. (Confirm the exact nRF54L **RRAM** read syntax for your `nrfjprog`/
-`nrfutil`/JLink version — the printed line is a starting point.)
+Dump the `mic_clip` region into `rec.wav` and play it. Use a tool that writes
+**raw binary**, e.g. J-Link's `savebin`:
+
+```bash
+JLinkExe -device nRF54L15_M33 -if SWD -speed 4000 -autoconnect 1
+J-Link> savebin rec.wav 0x13c000 64044
+```
+
+Note: `nrfjprog --memrd` prints a **hex text** dump, not binary — redirecting it
+to a file does NOT produce a playable WAV. Confirm the exact device name / read
+syntax for your J-Link/`nrfutil` version; the printed address+length are the
+inputs you need either way.
 
 ## Shell commands
 
