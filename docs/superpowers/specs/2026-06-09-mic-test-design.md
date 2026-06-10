@@ -1,7 +1,8 @@
 # Design: `app/mic-test` — MP34DT05 PDM mic, button-gated capture to flash
 
 - **Date:** 2026-06-09
-- **Status:** Approved design (pre-implementation)
+- **Status:** Implemented & verified on hardware 2026-06-10 (back-annotated with as-built
+  notes; see "As-built deviations" at the end).
 - **Board target:** `nrf54l15dk/nrf54l15/cpuapp` (secure-only, no MCUboot, no sysbuild)
 - **Depends on:** the shared `boards/phial-common.dtsi` (16-LED `gpio-leds` map, the
   `zephyr,user` node) and `conf/shell-common.conf`. New app, sibling to `app/led-test`,
@@ -16,7 +17,7 @@ and played back.
 
 Behavior: hold the **"boot" button (P1.12)** → all 16 LEDs light solid and the mic
 records; release → LEDs off, the clip is written to flash, and the console prints the
-clip's flash address + length + the exact `nrfjprog`/JLink readback command. Recording
+clip's flash address + length + the exact J-Link `savebin` readback command. Recording
 is capped at **~4 s** (buffer full ends it early). This is mic bring-up — first use of a
 PDM mic on this board.
 
@@ -95,8 +96,11 @@ Five units, each with one responsibility, mirroring the repo's module style:
 5. **Devicetree** — enable `pdm20` w/ pinctrl, add `button-gpios` to `zephyr,user`, add the
    `mic_clip` flash partition.
 
-The 128 KB capture buffer is a `static int16_t[65536]` in `main.c`, passed by pointer into
-`mic_capture()`, so `mic.c` is allocation-free and the buffer size is owned in one place.
+The 128 KB capture buffer is a `static int16_t[MIC_MAX_SAMPLES]` in `main.c`, passed by
+pointer into `mic_capture()`, so `mic.c` is allocation-free and the buffer size is owned in
+one place. `MIC_MAX_SAMPLES` (≈65512, **not** a round 65536) is derived from the partition
+size minus the 44-byte WAV header, rounded down so the PCM is a multiple of the 16-byte
+flash write block — so a full clip + header never overflows the partition.
 Place it in `.noinit` (Zephyr's `__noinit` macro) so it is neither zero-initialized at
 boot nor counted as initialized data — it is fully overwritten by each capture anyway.
 The implementation should report the actual `bss`/`noinit` figures from the link map so
@@ -176,11 +180,20 @@ same precedent as the accel/BME280 nodes.
 The existing `storage` partition is only 36 KB; we need ~128 KB. Add a dedicated
 `mic_clip` fixed-partition in the RRAM region MCUboot would use for **`slot1` (image-1)**.
 This app runs secure-only with **no MCUboot and no DFU**, so slot1 (664 KB @ `0xb6000`) is
-never used and is free for app data. Carve its tail:
+never used and is free for app data.
+
+> **As-built correction:** the original plan was to drop `mic_clip` inside the unused
+> slot1 range and rely on the overlap being "inert." That does not build — Zephyr's RRAM
+> partition validator (`validate_rram_partitions.c`) rejects overlapping fixed-partitions
+> at compile time. So the shared dtsi **shrinks `slot1` from 664 KB to 536 KB** (end moved
+> to `0x13c000`) and places `mic_clip` in the freed tail:
 
 ```dts
 &cpuapp_rram {
     partitions {
+        slot1_partition: partition@b6000 {
+            reg = <0xb6000 DT_SIZE_K(536)>;    /* 0xb6000..0x13c000 (was 664K) */
+        };
         mic_clip_partition: partition@13c000 {
             label = "mic_clip";
             reg = <0x13c000 DT_SIZE_K(128)>;   /* 0x13c000..0x15c000 */
@@ -190,10 +203,8 @@ never used and is free for app data. Carve its tail:
 ```
 
 `0x13c000 + 0x20000 = 0x15c000`, exactly where the `storage` partition begins, and clear
-of `cpuflpr_rram` (0x165000) — no overlap with anything *in use*. It sits inside the
-*declared* slot1 range (0xb6000..0x15c000); that is intentional and safe given no MCUboot.
-(Alternative, noted but not chosen: shrink slot1 in an overlay so nothing overlaps the
-declared region. The plain add is simpler and the overlap is inert.)
+of `cpuflpr_rram` (0x165000) — no overlap with anything. Shrinking the declared slot1 is
+harmless given no MCUboot/DFU.
 
 `store.c` references it by label via `FIXED_PARTITION_ID(mic_clip_partition)` /
 `flash_area_open()`.
@@ -210,7 +221,7 @@ declared region. The plain add is simpler and the overlap is inert.)
    rate, valid = true) for `store_last()`.
 
 Storing the WAV header inline means the J-Link readback is a directly-playable `.wav` — no
-host-side assembly.
+host-side assembly, **provided the readback tool writes raw binary** (see Retrieval below).
 
 ### Kconfig / build (`app/mic-test/`)
 
@@ -232,10 +243,10 @@ thread is needed — and `main` is the sole LED writer, so no LED concurrency):
 
 ```
 Idle:           LEDs off; poll button.
-Press edge:     all 16 LEDs on; mic_capture(buf, 65536, button_still_pressed,
-                                             &n, &rate) — blocks until release or full.
-Release / full: LEDs off; if n > 0: store_save_wav(buf, n, rate);
-                log one-line summary + the nrfjprog/JLink readback command; -> Idle.
+Press edge:     all 16 LEDs on; mic_capture(buf, MIC_MAX_SAMPLES, button_still_pressed,
+                                             &n) — blocks until release or full.
+Release / full: LEDs off; if n > 0: store_save_wav(buf, n, MIC_SAMPLE_RATE);
+                log one-line summary + the JLink savebin readback command; -> Idle.
 ```
 
 `button_still_pressed()` is a small file-scope predicate reading the button GPIO; passed to
@@ -246,7 +257,7 @@ release-detection latency — imperceptible.
 
 | Command | Behavior |
 |---------|----------|
-| `mic info` | Print the last clip's flash address, length, sample count, duration, and the ready-to-paste readback command (e.g. `nrfjprog --memrd <addr> --n <len>`). Reports "no clip" if none. |
+| `mic info` | Print the last clip's flash address, length, sample count, duration, and the ready-to-paste readback command (J-Link `savebin <file> <addr> <len>`). Reports "no clip" if none. |
 | `mic erase` | `store_erase()` — wipe the partition and clear `clip_info`. |
 
 Recording itself is button-driven, not a shell command (YAGNI).
@@ -273,9 +284,10 @@ A short top-level README so the demo is self-documenting, covering:
 - **Build & flash** — the standard `west build -p -b nrf54l15dk/nrf54l15/cpuapp
   --no-sysbuild app/mic-test` and flash, consistent with the sibling apps.
 - **Record** — hold the button (LEDs all on while recording), release to stop.
-- **Retrieve** — copy the `nrfjprog`/JLink command the console prints (clip address +
-  length) to read the `mic_clip` partition off the board into a `.wav` and play it; note
-  the exact nRF54L RRAM read syntax is to be confirmed during bring-up.
+- **Retrieve** — copy the J-Link `savebin` command the console prints (clip address +
+  length) to read the `mic_clip` partition off the board into a `.wav` and play it. Use a
+  tool that writes **raw binary** (`savebin`); `nrfjprog --memrd` emits hex text, not a WAV.
+  Confirm the exact device name / read syntax for your J-Link/`nrfutil` version.
 - **Shell** — `mic info` / `mic erase`.
 
 ## Error handling
@@ -302,8 +314,8 @@ A short top-level README so the demo is self-documenting, covering:
   1. Hold the boot button → all 16 LEDs light solid.
   2. Speak; release → console logs clip address / length / duration + the readback command;
      LEDs go off.
-  3. Run the printed `nrfjprog --memrd` (or JLink `savebin`) command, save to `rec.wav`,
-     and confirm it plays back recognizable audio.
+  3. Run the printed JLink `savebin rec.wav <addr> <len>` command and confirm it plays
+     back recognizable audio. (Verified working on hardware 2026-06-10.)
   4. `mic info` reports the same address/length/duration.
   5. `mic erase`, then `mic info` reports no clip.
   6. Hold > 4 s → "max length reached" logged, a ~4 s clip still stores and plays.
@@ -324,3 +336,31 @@ A short top-level README so the demo is self-documenting, covering:
 | `app/mic-test/src/wav.h` / `wav.c` | New — pure WAV header builder (unit-tested) |
 | `app/mic-test/src/main.c` | New — button/LED state machine + `mic` shell cmd |
 | `app/mic-test/tests/wav/test_wav.c` | New — `wav_header` host unit test |
+
+## As-built deviations (back-annotated 2026-06-10)
+
+Discovered during implementation/review and folded into the shipped code; this section
+reconciles the design above with what was actually built.
+
+1. **`slot1` must be shrunk, not overlapped.** The plan to nest `mic_clip` inside the unused
+   slot1 range fails Zephyr's `validate_rram_partitions.c` overlap check at build time. The
+   dtsi shrinks `slot1` 664 KB → 536 KB (end `0x13c000`) and puts `mic_clip` in the freed
+   tail. Harmless with no MCUboot/DFU. (Reflected in the Flash partition section above.)
+2. **Retrieval is J-Link `savebin`, not `nrfjprog --memrd`.** `--memrd` prints a hex text
+   dump, so redirecting it to a file does not yield a playable WAV. The `mic info` shell
+   hint and the README recommend `savebin <file> <addr> <len>` (raw binary) and warn about
+   the hex-dump pitfall. (Reflected throughout above.)
+3. **Capture buffer is `MIC_MAX_SAMPLES` (≈65512), not a round 65536.** Derived from the
+   partition size minus the 44-byte header, rounded to a multiple of 8 samples, so a full
+   clip + header fits the 128 KB partition exactly (131072 B) after 16-byte write padding.
+4. **`mic_capture()` has no `out_rate`.** The nRF PDM driver picks the closest clock to
+   16 kHz but does not report the achieved rate back, so the WAV header uses the requested
+   `MIC_SAMPLE_RATE` (16000); the true rate is <1 % off, inaudible.
+5. **`CONFIG_MAIN_STACK_SIZE=2048`.** `store_save_wav()` runs on the main thread and descends
+   into the RRAM flash driver with ~300 B of stack buffers; the default 1 KB stack was
+   bumped to 2048 (matching the sibling apps) so the first store can't fault.
+6. **`CONFIG_LED=y` / `CONFIG_LED_GPIO=y` are explicit.** Unlike the DMIC/sensor drivers, the
+   gpio-leds driver is gated behind `if LED` and does not auto-enable from its DT node.
+
+Verified end to end on hardware on 2026-06-10: hold-to-record lights the LEDs, the clip
+stores to `mic_clip`, and the `savebin` readback produced a playable WAV.
