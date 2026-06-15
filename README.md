@@ -13,6 +13,7 @@ adapted for multiple test/demo applications living side-by-side.
 | `app/sensor-test/` | Tilt→LED compass (LIS2DH), BME280 env logging, LF21115TMR magnet switch |
 | `app/buzzer-test/` | Half-octave test tones (800→8000 Hz) on the P0.04 buzzer via the shell  |
 | `app/mic-test/`    | Record the MP34DT05 PDM mic (button-held) to a flash WAV — see its README |
+| `app/sensor-pouch/` | BME280 → Golioth Stream over **pouch** (BLE GATT); cloud `LED` setting (1-16) lights an LED. Built with `--sysbuild` (MCUboot). |
 
 ## Setup
 
