@@ -43,13 +43,33 @@ that gateway is out of scope — this spec is the device firmware.
 
 ## Key integration decisions & risks
 
-### NCS version (the primary risk)
+### NCS upgrade to v3.2.3 (decided — Milestone 0)
 
-pouch is verified on **NCS v3.2.3**; this workspace is on **NCS v3.1.1** (and golioth
-firmware-SDK `v0.21.0`). Adding the pouch module at `revision: main` may hit Kconfig/API
-drift. **Mitigation:** the first implementation milestone is a **spike** that proves pouch
-compiles/links and BLE comes up on our NCS 3.1.1 *before* any feature work. If it fails, we
-pin pouch to a compatible revision, or (worst case, escalated to the user) bump NCS.
+pouch is verified on **NCS v3.2.3**; this workspace is on **NCS v3.1.1**. Per the user's
+decision, we **upgrade the whole workspace to NCS v3.2.3** (rather than risk pouch on 3.1.1)
+and fix whatever breaks. This is the first milestone and a prerequisite for all feature
+work; it touches the manifest and potentially every existing app.
+
+**Why this needs a manifest restructure (not just a version bump):** our top-level
+`west.yml` does not pin NCS directly — it imports NCS *via* the `golioth` project's
+`west-ncs.yml` (golioth-firmware-SDK `v0.21.0` → nrf `v3.1.1`). Researched 2026-06-15: **no
+golioth-firmware-SDK release pins NCS 3.2.3** (even the latest, `v0.22.0`, still pins nrf
+`v3.1.1`). So we cannot reach 3.2.3 by bumping the golioth SDK. Instead we adopt **pouch's
+own verified manifest structure**: pin **`nrf` at `v3.2.3` directly** (with the
+name-allowlist import + our existing `path-prefix: deps`), pin **`golioth` at the commit
+pouch verifies against** (`d703b1f…`), and add **`pouch` at `main`**. The allowlist must
+gain **`littlefs`** (and any MCUmgr deps) for the credentials filesystem.
+
+**"Deal with the issues":** after `west update`, rebuild **all** existing apps
+(`led-test`, `sensor-test`, `buzzer-test`, `mic-test`) on NCS 3.2.3 and fix any
+Kconfig/DT/API breakage from the 3.1.1→3.2.3 jump. The milestone is "done" when every app
+builds clean on 3.2.3 *and* the upstream pouch `ble_gatt` example builds for our board with
+`--sysbuild`. Feature work starts only after that.
+
+> Risk note: the classic `golioth-firmware-sdk` and pouch's in-tree `golioth_sdk` both
+> define `CONFIG_GOLIOTH*` symbols. Pouch's verified manifest includes both (golioth at
+> `d703b1f`), so coexistence is expected to work; confirming it on our board is part of
+> Milestone 0. Our existing apps don't enable `CONFIG_GOLIOTH`, so they're unaffected.
 
 ### sysbuild + MCUboot (OTA) vs the repo norm
 
@@ -90,23 +110,43 @@ mcumgr --conntype serial --connstring $PORT fs upload key.der /lfs1/credentials/
 
 The `/lfs1/credentials/` directory is created on first boot. A first-boot LittleFS "can't
 mount; formatting" warning is expected. **PSA / secp384r1 on the nRF54L's CRACEN** is a
-bring-up item validated during the spike.
+bring-up item validated during Milestone 0.
 
-### west / module wiring
+### west / module wiring (manifest restructure for NCS 3.2.3 + pouch)
 
-Add to `phial-app/west.yml` (alongside the existing `golioth` project):
+Restructure `phial-app/west.yml` so NCS is pinned directly (see "NCS upgrade" above) and
+both golioth and pouch are plain module projects. Approximate shape (exact allowlist
+finalized in Milestone 0):
 ```yaml
-- name: pouch
-  path: deps/modules/lib/pouch
-  revision: main          # pin to a tag/SHA once the spike confirms it builds
-  url: https://github.com/golioth/pouch.git
-  submodules: true        # pouch has a .gitmodules; spike confirms exact need
+manifest:
+  version: 1.0
+  projects:
+    - name: nrf
+      path: deps/nrf
+      revision: v3.2.3
+      url: https://github.com/nrfconnect/sdk-nrf
+      import:
+        path-prefix: deps
+        name-allowlist: [nrf, zephyr, cmsis_6, hal_nordic, mbedtls, mcuboot,
+                         nrfxlib, oberon-psa-crypto, segger, tfm-mcuboot,
+                         trusted-firmware-m, zcbor, littlefs, ...]   # + MCUmgr deps
+    - name: golioth
+      path: deps/modules/lib/golioth-firmware-sdk
+      revision: d703b1f8805c7584a44dabc31bdf09164637d888   # pouch's verified pin
+      url: https://github.com/golioth/golioth-firmware-sdk.git
+      submodules: true
+    - name: pouch
+      path: deps/modules/lib/pouch
+      revision: main          # pin to a tag/SHA after Milestone 0 confirms the build
+      url: https://github.com/golioth/pouch.git
+      submodules: true        # pouch has a .gitmodules
+  self:
+    path: phial-fw
 ```
 Then `west update` and `pip install -r deps/modules/lib/pouch/requirements.txt` (pouch's
-zcbor codegen tooling). The existing `golioth` (classic firmware-SDK) project **stays** — it
-imports NCS into the workspace and is load-bearing; pouch's `golioth_sdk` is a separate
-layer and is what this app uses. We do **not** import pouch's own `west-*.yml` (they pin a
-different NCS); adding the module is enough for its `zephyr/module.yml` to be picked up.
+zcbor codegen tooling). We do **not** import pouch's own `west-*.yml`; adding the module is
+enough for its `zephyr/module.yml` to be picked up. Adding `littlefs` to the allowlist is
+required for the credentials filesystem (our current allowlist omits it).
 
 ## Non-goals
 
@@ -194,10 +234,12 @@ struct dump, so the uplink handler builds the JSON explicitly.
 
 ## Testing
 
-- **Spike (critical first gate):** add the pouch module + `pip install` its requirements;
-  build the upstream `ble_gatt` example (or a minimal pouch+BLE skeleton) for
-  `nrf54l15dk/nrf54l15/cpuapp` with `--sysbuild` to prove pouch compiles/links and BLE comes
-  up on our **NCS 3.1.1**. Gate the rest of the work on this.
+- **Milestone 0 (critical first gate — the NCS 3.2.3 upgrade):** restructure the manifest
+  (nrf v3.2.3 direct + golioth `d703b1f` + pouch `main`, `littlefs` in the allowlist),
+  `west update`, `pip install` pouch's requirements. Then (a) rebuild **all existing apps**
+  (`led-test`, `sensor-test`, `buzzer-test`, `mic-test`) on NCS 3.2.3 and fix any breakage,
+  and (b) build the upstream pouch `ble_gatt` example for `nrf54l15dk/nrf54l15/cpuapp` with
+  `--sysbuild` to prove pouch compiles/links and BLE comes up. Gate all feature work on this.
 - **Host unit test:** `led_index_decode` (1-16 → index; reject 0, 17, negatives) — a
   self-contained `cc` test like `app/sensor-test/tests/tilt/test_tilt.c`.
 - **Build verification:** clean `--sysbuild` build for `nrf54l15dk/nrf54l15/cpuapp`.
@@ -209,7 +251,8 @@ struct dump, so the uplink handler builds the JSON explicitly.
 
 | File | Change |
 |------|--------|
-| `phial-app/west.yml` | Add the `pouch` module project |
+| `phial-app/west.yml` | **Restructure**: pin `nrf` v3.2.3 directly (NCS upgrade), `golioth` at pouch's verified commit, add `pouch` module; extend allowlist (`littlefs`, MCUmgr) |
+| existing apps (`led/sensor/buzzer/mic-test`) | Fix any NCS 3.1.1→3.2.3 build breakage (Milestone 0) |
 | `app/sensor-pouch/CMakeLists.txt` | New |
 | `app/sensor-pouch/prj.conf` | New (BT/SMP, pouch, golioth settings+OTA, LittleFS, MCUmgr, sensor/BME280, LED, shell, mbedTLS heap) |
 | `app/sensor-pouch/sysbuild.conf` | New — `SB_CONFIG_BOOTLOADER_MCUBOOT=y` |
