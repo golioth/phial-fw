@@ -5,14 +5,14 @@ manifest:
   version: 1.0
 
   projects:
-    - name: golioth
-      path: modules/lib/golioth-firmware-sdk
-      revision: v0.21.0
-      url: https://github.com/golioth/golioth-firmware-sdk.git
-      west-commands: scripts/west-commands.yml
-      submodules: true
+    # NCS pinned directly at v3.2.3 (pouch's verified version). Imports the
+    # Zephyr/NCS module set under deps/ via name-allowlist. This replaces the
+    # previous indirect import through golioth-firmware-sdk's west-ncs.yml.
+    - name: nrf
+      path: nrf                  # import.path-prefix below prepends "deps/" -> deps/nrf
+      revision: v3.2.3
+      url: https://github.com/nrfconnect/sdk-nrf
       import:
-        file: west-ncs.yml
         path-prefix: deps
         name-allowlist:
           - nrf
@@ -31,6 +31,22 @@ manifest:
           - tinycrypt
           - trusted-firmware-m
           - zcbor
+          - littlefs
+
+    # Classic Golioth firmware SDK, pinned at the commit pouch verifies against.
+    - name: golioth
+      path: deps/modules/lib/golioth-firmware-sdk
+      revision: d703b1f8805c7584a44dabc31bdf09164637d888
+      url: https://github.com/golioth/golioth-firmware-sdk.git
+      west-commands: scripts/west-commands.yml
+      submodules: true
+
+    # Pouch transport + its in-tree golioth_sdk (Stream/Settings/OTA).
+    - name: pouch
+      path: deps/modules/lib/pouch
+      revision: main
+      url: https://github.com/golioth/pouch.git
+      submodules: true
 
   self:
     path: phial-fw
