@@ -26,7 +26,11 @@ static struct gpio_callback button_cb;
 
 static const struct device *g_leds;
 static atomic_t g_syncing;
+/* g_last_sync: pointer to a string literal, written from the workqueue/pouch-event
+ * contexts and read from the shell. Word-aligned pointer load/store is atomic on
+ * this target and the value is display-only, so no lock is needed. */
 static const char *g_last_sync = "none";
+static struct k_work g_sync_work;
 
 static void do_uplink(void)
 {
@@ -68,18 +72,24 @@ POUCH_EVENT_HANDLER(on_pouch_event, NULL);
 
 static void start_sync(void)
 {
-    if (atomic_set(&g_syncing, 1) == 1) {
-        return;
+    if (!atomic_cas(&g_syncing, 0, 1)) {
+        return;   /* a sync is already in progress */
     }
     g_last_sync = "in-progress";
     LOG_INF("sync requested");
     ble_peripheral_request_gateway(true);
 }
 
+static void sync_work_handler(struct k_work *work)
+{
+    ARG_UNUSED(work);
+    start_sync();
+}
+
 static void button_pressed(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
 {
     ARG_UNUSED(dev); ARG_UNUSED(cb); ARG_UNUSED(pins);
-    start_sync();
+    k_work_submit(&g_sync_work);
 }
 
 static int setup_pouch(void)
@@ -112,7 +122,9 @@ static void setup_button(void)
         return;
     }
     gpio_init_callback(&button_cb, button_pressed, BIT(button.pin));
-    gpio_add_callback(button.port, &button_cb);
+    if (gpio_add_callback(button.port, &button_cb) != 0) {
+        LOG_WRN("failed to add button callback");
+    }
 }
 
 int main(void)
@@ -140,6 +152,7 @@ int main(void)
         LOG_WRN("BME280 unavailable; uplink will have no reading");
     }
 
+    k_work_init(&g_sync_work, sync_work_handler);
     setup_button();
 
     err = ble_peripheral_start();
