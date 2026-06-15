@@ -11,4 +11,5 @@ target_sources(app PRIVATE
     src/fw_update.c
     src/fatal_error.c
     src/led_index.c
+    src/app_settings.c
 )
