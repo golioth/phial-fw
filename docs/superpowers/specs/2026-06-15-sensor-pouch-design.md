@@ -62,9 +62,15 @@ gain **`littlefs`** (and any MCUmgr deps) for the credentials filesystem.
 
 **"Deal with the issues":** after `west update`, rebuild **all** existing apps
 (`led-test`, `sensor-test`, `buzzer-test`, `mic-test`) on NCS 3.2.3 and fix any
-Kconfig/DT/API breakage from the 3.1.1→3.2.3 jump. The milestone is "done" when every app
-builds clean on 3.2.3 *and* the upstream pouch `ble_gatt` example builds for our board with
-`--sysbuild`. Feature work starts only after that.
+Kconfig/DT/API breakage from the 3.1.1→3.2.3 jump.
+
+**Milestone 0 is a bounded prerequisite phase** with a crisp done-criterion: every existing
+app builds clean on NCS 3.2.3 **and** the upstream pouch `ble_gatt` example builds for our
+board with `--sysbuild`. The "fix breakage" work is bounded by exactly that — get the four
+existing builds green again, nothing more. The implementation plan sequences M0 first (its
+own set of tasks); all sensor-pouch feature tasks depend on it. If M0 unexpectedly balloons
+(e.g. a 3.2.3 API change forces broad rework), that is the point to pause and split it into
+its own plan rather than letting it absorb the feature work.
 
 > Risk note: the classic `golioth-firmware-sdk` and pouch's in-tree `golioth_sdk` both
 > define `CONFIG_GOLIOTH*` symbols. Pouch's verified manifest includes both (golioth at
@@ -127,13 +133,20 @@ manifest:
       url: https://github.com/nrfconnect/sdk-nrf
       import:
         path-prefix: deps
-        name-allowlist: [nrf, zephyr, cmsis_6, hal_nordic, mbedtls, mcuboot,
-                         nrfxlib, oberon-psa-crypto, segger, tfm-mcuboot,
-                         trusted-firmware-m, zcbor, littlefs, ...]   # + MCUmgr deps
+        # Finalize by DIFFING against the current allowlist — keep everything we
+        # already pull in (mbedtls-nrf, net-tools, qcbor, tinycrypt, mbedtls,
+        # mcuboot, segger, tfm-mcuboot, trusted-firmware-m, zcbor, cmsis_6,
+        # hal_nordic, nrfxlib, oberon-psa-crypto, nrf, zephyr) and ADD littlefs
+        # (+ any MCUmgr deps). Do not start from pouch's list and drop ours.
+        name-allowlist: [nrf, zephyr, cmsis_6, hal_nordic, mbedtls, mbedtls-nrf,
+                         mcuboot, net-tools, nrfxlib, oberon-psa-crypto, qcbor,
+                         segger, tfm-mcuboot, tinycrypt, trusted-firmware-m,
+                         zcbor, littlefs]
     - name: golioth
       path: deps/modules/lib/golioth-firmware-sdk
       revision: d703b1f8805c7584a44dabc31bdf09164637d888   # pouch's verified pin
       url: https://github.com/golioth/golioth-firmware-sdk.git
+      west-commands: scripts/west-commands.yml             # preserved from current manifest
       submodules: true
     - name: pouch
       path: deps/modules/lib/pouch
