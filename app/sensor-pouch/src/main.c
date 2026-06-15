@@ -116,7 +116,7 @@ static int setup_pouch(void)
 static void setup_button(void)
 {
     if (!gpio_is_ready_dt(&button) ||
-        gpio_pin_configure_dt(&button, GPIO_INPUT) != 0 ||
+        gpio_pin_configure_dt(&button, GPIO_INPUT | GPIO_PULL_UP) != 0 ||
         gpio_pin_interrupt_configure_dt(&button, GPIO_INT_EDGE_TO_ACTIVE) != 0) {
         LOG_WRN("boot button unavailable; use the gateway's own trigger");
         return;
