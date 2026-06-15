@@ -97,11 +97,17 @@ After uploading both files, reboot the device.
 3. The gateway bridges the session to Golioth; the latest BME280 reading appears
    in the Golioth **Stream** under `.s/sensor`:
    ```json
-   {"temp": 23.4, "humidity": 48.2, "pressure": 1013.1}
+   {"temp": 23.4, "humidity": 48.2, "pressure": 101.3}
    ```
 4. To light a specific LED, set the `LED` **Settings** value (integer 1–16) in
    the Golioth console. The device applies it on the next sync. Values outside
    1–16 are silently ignored.
+
+> Note: the boot button *initiates* a sync. After that, the BLE peripheral layer
+> (ported from the pouch example) also re-requests a gateway periodically while
+> disconnected — every `CONFIG_EXAMPLE_SYNC_PERIOD_S` seconds (default 20). So the
+> device keeps trying to sync after the first press, not strictly once-per-press.
+> Raise that Kconfig (or gate the resync) if you want button-only behavior.
 
 ## Shell commands
 

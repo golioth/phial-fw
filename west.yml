@@ -42,9 +42,11 @@ manifest:
       submodules: true
 
     # Pouch transport + its in-tree golioth_sdk (Stream/Settings/OTA).
+    # Pinned to the SHA verified against this workspace (NCS 3.2.3 + golioth
+    # d703b1f). Pouch has no release tags yet; bump this SHA + re-verify to advance.
     - name: pouch
       path: deps/modules/lib/pouch
-      revision: main
+      revision: f7d0dc96a7a650e6fcaa9c1444dedf85c64ebc54
       url: https://github.com/golioth/pouch.git
       submodules: true
 
