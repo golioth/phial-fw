@@ -9,4 +9,5 @@ target_sources(app PRIVATE
     src/credentials.c
     src/fw_update.c
     src/fatal_error.c
+    src/led_index.c
 )
