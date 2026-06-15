@@ -5,4 +5,8 @@ project(sensor_pouch)
 
 target_sources(app PRIVATE
     src/main.c
+    src/ble_peripheral.c
+    src/credentials.c
+    src/fw_update.c
+    src/fatal_error.c
 )
