@@ -37,6 +37,17 @@
     status = "disabled";
 };
 
+/* The DK common dtsi defines a `pwm-leds` node (`/pwmleds`) whose sole child
+ * references &pwm20. As of NCS 3.2.3 the led_pwm driver resolves that phandle
+ * for EVERY child (DT_INST_FOREACH_CHILD_SEP is not status-filtered), so a
+ * disabled pwm20 makes led_pwm.c fail to build with `__device_dts_ord_NN
+ * undeclared`. Disable the whole pwm-leds node (it is unlabeled, hence the
+ * path reference) so no led_pwm instance is generated. Phial drives its LEDs
+ * via plain GPIO, not PWM. */
+&{/pwmleds} {
+    status = "disabled";
+};
+
 &uart30 {
     /* DK's uart30 default routes RTS to P0.02 = our LED04. uart30 isn't
      * used on Phial. */
