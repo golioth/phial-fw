@@ -1,0 +1,17 @@
+sample:
+  name: Phial sensor-pouch
+  description: BME280 -> Golioth Stream over pouch BLE GATT; cloud LED setting (1-16) lights an LED.
+common:
+  build_only: true
+  tags:
+    - phial
+    - pouch
+    - bluetooth
+tests:
+  sample.phial.sensor_pouch:
+    platform_allow:
+      - nrf54l15dk/nrf54l15/cpuapp
+    integration_platforms:
+      - nrf54l15dk/nrf54l15/cpuapp
+    extra_args:
+      - --sysbuild

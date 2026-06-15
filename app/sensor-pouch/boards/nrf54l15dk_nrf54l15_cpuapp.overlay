@@ -1,0 +1,32 @@
+/*
+ * sensor-pouch overlay: shared Phial hardware + MCUboot-friendly partitions.
+ *
+ * phial-common.dtsi shrank slot1 to 536K and added mic_clip (for mic-test).
+ * MCUboot image swap needs slot0 == slot1 (both 664K), so we restore the stock
+ * slot1 size and delete mic_clip (unused here). The dtsi's "no MCUboot" comment
+ * predates this app and is stale for sensor-pouch.
+ */
+#include "../../../boards/phial-common.dtsi"
+
+/delete-node/ &mic_clip_partition;
+
+&slot1_partition {
+    reg = <0xb6000 DT_SIZE_K(664)>;   /* 0xb6000..0x15c000, matches slot0 size */
+};
+
+/ {
+    fstab {
+        compatible = "zephyr,fstab";
+        lfs1: lfs1 {
+            compatible = "zephyr,fstab,littlefs";
+            mount-point = "/lfs1";
+            partition = <&storage_partition>;
+            automount;
+            read-size = <16>;
+            prog-size = <16>;
+            cache-size = <64>;
+            lookahead-size = <32>;
+            block-cycles = <512>;
+        };
+    };
+};
