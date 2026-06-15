@@ -100,7 +100,7 @@ cd /Users/chrisg/golioth/phial-fw/phial-app
 /Users/chrisg/golioth/phial-fw/.venv/bin/west update    # big fetch; timeout 600000
 /Users/chrisg/golioth/phial-fw/.venv/bin/pip install -r ../deps/modules/lib/pouch/requirements.txt
 ```
-Expected: `west list` shows `nrf v3.2.3`, `zephyr` at the NCS-3.2.3 revision, and `pouch` present at `deps/modules/lib/pouch`. If `west update` errors on a missing project in the allowlist, add it (diff against the old allowlist — do not drop anything previously present).
+Expected: `west list` shows `nrf v3.2.3`, `zephyr` at the NCS-3.2.3 revision, and `pouch` present at `deps/modules/lib/pouch`. If `west update` errors on a missing project in the allowlist, add it (diff against the old allowlist — do not drop anything previously present). Note our allowlist intentionally **differs from pouch's upstream `west-ncs.yml`**: we keep everything our repo already pulled in (`mbedtls-nrf`, `net-tools`, `qcbor`, `tinycrypt`, …) and add `littlefs`; pouch's list also has `libmetal`/`open-amp` — add those only if a build actually needs them (the pouch/BLE example doesn't on this SoC, but confirm in Task 0.3).
 
 - [ ] **Step 3: Sanity check the tree**
 
@@ -395,7 +395,7 @@ cp $SRC/ble_peripheral.c $SRC/ble_peripheral.h $SRC/credentials.c $SRC/credentia
    $SRC/fw_update.c $SRC/fatal_error.c .
 ```
 
-- [ ] **Step 2: Reconcile dependencies.** Read each copied file. The example references `CONFIG_EXAMPLE_*` Kconfig (credentials dir, FW component, sync period) defined in the example's `Kconfig`. Add the ones actually used to `app/sensor-pouch/Kconfig` (create it, `source "$ZEPHYR_BASE/Kconfig"` + the needed `config EXAMPLE_*` entries copied from `deps/modules/lib/pouch/examples/zephyr/ble_gatt/Kconfig`), OR replace the few references with literal values. Prefer creating the `Kconfig` with the needed entries — smallest diff to the ported code. Keep `EXAMPLE_CREDENTIALS_DIR` = `/lfs1/credentials`.
+- [ ] **Step 2: Reconcile dependencies.** Read each copied file. The example references `CONFIG_EXAMPLE_*` Kconfig (credentials dir, FW component, sync period) defined in the example's `Kconfig`. Add the ones actually used to `app/sensor-pouch/Kconfig` (create it, `source "$ZEPHYR_BASE/Kconfig"` + the needed `config EXAMPLE_*` entries copied from `deps/modules/lib/pouch/examples/zephyr/ble_gatt/Kconfig`), OR replace the few references with literal values. Prefer creating the `Kconfig` with the needed entries — smallest diff to the ported code. Keep `EXAMPLE_CREDENTIALS_DIR` = `/lfs1/credentials`. **Also:** `fw_update.c` (and MCUboot image versioning) may expect an `app_version.h` generated from a `VERSION` file in the app root — if the build complains about `APP_BUILD_VERSION`/`app_version.h`, add a `app/sensor-pouch/VERSION` file (copy the example's `deps/modules/lib/pouch/examples/zephyr/ble_gatt/VERSION`).
 
 - [ ] **Step 3: Add the four sources to `CMakeLists.txt`**
 ```cmake
@@ -698,9 +698,12 @@ static void do_uplink(void)
 }
 POUCH_UPLINK_HANDLER(do_uplink);
 
-/* Clear the gateway-request flag once a session ends, returning to idle. */
-static void on_pouch_event(enum pouch_event event)
+/* Clear the gateway-request flag once a session ends, returning to idle.
+ * pouch/events.h: callback is void(enum pouch_event, void *ctx); the macro
+ * takes (callback, ctx). Verified against upstream events.h. */
+static void on_pouch_event(enum pouch_event event, void *ctx)
 {
+    ARG_UNUSED(ctx);
     if (event == POUCH_EVENT_SESSION_END) {
         ble_peripheral_request_gateway(false);
         atomic_set(&g_syncing, 0);
@@ -708,7 +711,7 @@ static void on_pouch_event(enum pouch_event event)
         LOG_INF("sync complete");
     }
 }
-POUCH_EVENT_HANDLER(on_pouch_event);
+POUCH_EVENT_HANDLER(on_pouch_event, NULL);
 
 static void start_sync(void)
 {
@@ -824,9 +827,10 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sensorpouch_sub,
 SHELL_CMD_REGISTER(sensorpouch, &sensorpouch_sub, "Phial sensor-pouch status", NULL);
 ```
 
-> Implementer reconciliation notes (verify against the vendored pouch headers; the API may have shifted on `main`):
-> - **Event API:** confirm `pouch/events.h` exposes `POUCH_EVENT_HANDLER` + an enum with a "session ended" member. The names above (`POUCH_EVENT_SESSION_END`, `POUCH_EVENT_HANDLER`) are best-guess — grep `deps/modules/lib/pouch/include/pouch/events.h` and adjust. If there is no session-end event, fall back to clearing the gateway-request flag from the uplink handler (after the write) or on a short timer.
-> - **Content type / timeout constants:** confirm `POUCH_CONTENT_TYPE_JSON` and `POUCH_FOREVER` (grep `deps/modules/lib/pouch/include/pouch/`); the example `main.c` uses both.
+> Implementer reconciliation notes (APIs verified against upstream pouch `main` during plan review — treat as confirmed, re-grep only if a build error suggests drift):
+> - **Event API (confirmed):** `pouch/events.h` defines `enum pouch_event { POUCH_EVENT_SESSION_START, POUCH_EVENT_SESSION_END }`, callback `void (*)(enum pouch_event, void *ctx)`, macro `POUCH_EVENT_HANDLER(callback, ctx)` (two args). The code above matches.
+> - **Constants (confirmed):** `POUCH_CONTENT_TYPE_JSON` (=50, `types.h`), `POUCH_FOREVER` (`port.h`, type `pouch_timeout_t`), `POUCH_VERSION` (`types.h`), `POUCH_GATT_VERSION` (`transport/bluetooth/gatt.h`). `pouch_uplink_entry_write`'s `content_type` is `uint16_t`.
+> - **Int (not bool) settings:** the upstream example's `LED` callback is `bool`; we deliberately use `int32_t` (Task 5 too) to get a 1-16 INT setting. Do NOT "fix" it back to `bool` when reconciling against the vendored example.
 > - **`ble_peripheral_*`:** signatures come from the copied `ble_peripheral.h`.
 > - The example calls `ble_peripheral_request_gateway(true)` at startup ("request right away"); we deliberately do **not** (button-triggered model per the spec).
 
