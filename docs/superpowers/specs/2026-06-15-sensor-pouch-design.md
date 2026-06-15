@@ -71,7 +71,10 @@ top of the include:
 
 Resulting map = the stock layout: `mcuboot` 64 KB · `slot0` 664 KB · `slot1` 664 KB ·
 `storage` 36 KB. The 36 KB `storage_partition` is mounted as **LittleFS** (`/lfs1`) for
-credentials.
+credentials. (Note: `phial-common.dtsi`'s `mic_clip` comment says "this repo builds
+secure-only with no MCUboot" — that becomes stale once this app exists; the app overlay
+should carry a short comment explaining it restores the stock MCUboot layout. We do **not**
+edit the shared dtsi, to keep the change confined to this app.)
 
 ### Credentials / provisioning (LittleFS + MCUmgr, like the example)
 
@@ -97,6 +100,7 @@ Add to `phial-app/west.yml` (alongside the existing `golioth` project):
   path: deps/modules/lib/pouch
   revision: main          # pin to a tag/SHA once the spike confirms it builds
   url: https://github.com/golioth/pouch.git
+  submodules: true        # pouch has a .gitmodules; spike confirms exact need
 ```
 Then `west update` and `pip install -r deps/modules/lib/pouch/requirements.txt` (pouch's
 zcbor codegen tooling). The existing `golioth` (classic firmware-SDK) project **stays** — it
@@ -161,7 +165,9 @@ sensorpouch status --> BLE state, creds loaded?, last sync result, LED index, la
 ```
 
 The BME280 stream entry is JSON, e.g. `{"temp":22.4,"humidity":41.0,"pressure":99.8}`
-(units: °C / %RH / kPa, matching sensor-test's `env.c`).
+(units: °C / %RH / kPa). The JSON keys are a free choice; they are serialized from the
+ported `struct env_reading` fields (`temp_c`, `humidity_pct`, `pressure_kpa`) — not a 1:1
+struct dump, so the uplink handler builds the JSON explicitly.
 
 ## Runtime behavior
 
